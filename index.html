@@ -125,9 +125,9 @@
   .layout{display:grid; grid-template-columns:1fr 300px; gap:32px;}
   @media (max-width:760px){ .layout{grid-template-columns:1fr;} }
 
-  .board-col{display:flex; flex-direction:column; align-items:flex-start;}
+  .board-col{display:flex; flex-direction:column; align-items:flex-start; width:100%; min-width:0;}
   .board-shell{
-    position:relative; width:480px; max-width:100%; aspect-ratio:1/1;
+    position:relative; width:100%; max-width:480px; aspect-ratio:1/1;
     border:1px solid var(--border); padding:14px; background:var(--panel);
     border-radius:3px;
   }
@@ -153,6 +153,7 @@
   .piece{
     position:absolute; width:12.5%; height:12.5%;
     display:flex; align-items:center; justify-content:center;
+    font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif;
     font-size:var(--piece-size, 50px); line-height:1; cursor:pointer; user-select:none;
     touch-action:manipulation;
     transition:left .32s cubic-bezier(.4,0,.2,1), top .32s cubic-bezier(.4,0,.2,1), opacity .3s ease;
@@ -1241,7 +1242,7 @@ function renderPieces(){
     if(!p) continue;
     const el = document.createElement('div');
     el.className = 'piece ' + p.color + (turn==='b' ? ' ai-turn' : '');
-    el.textContent = PIECE_GLYPH[p.type];
+    el.textContent = PIECE_GLYPH[p.type] + "\uFE0E";
     const [dr,dc] = displayCoord(r,c);
     el.style.left = (dc*12.5)+'%';
     el.style.top = (dr*12.5)+'%';
