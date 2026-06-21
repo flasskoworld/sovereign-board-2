@@ -117,9 +117,17 @@
   @media (max-width:760px){
     .themes{
       flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch;
-      margin:0 -20px 24px; padding:0 20px 4px; scroll-snap-type:x proximity;
+      gap:8px; margin:0 -14px 18px; padding:0 14px 6px; scroll-snap-type:x proximity;
+      scrollbar-width:none;
     }
-    .theme-btn{ flex-shrink:0; padding:11px 16px; scroll-snap-align:start; }
+    .themes::-webkit-scrollbar{ display:none; }
+    .theme-btn{
+      flex:0 0 auto; min-width:78px; padding:9px 12px;
+      font-size:0; letter-spacing:0; text-align:center; scroll-snap-align:start;
+    }
+    .theme-btn::after{
+      content:attr(data-short); font-size:11px; letter-spacing:.08em;
+    }
   }
 
   .layout{display:grid; grid-template-columns:1fr 300px; gap:32px;}
@@ -409,11 +417,11 @@
   <p class="tagline">Pick an era. Each location carries its own opponent philosophy.</p>
 
   <div class="themes">
-    <button class="theme-btn active" data-theme="cairo">Cairo — Ancient Statecraft</button>
-    <button class="theme-btn" data-theme="wallstreet">Wall Street — Capital Warfare</button>
-    <button class="theme-btn" data-theme="lagos">Lagos — The Hustle</button>
-    <button class="theme-btn" data-theme="tokyo">Tokyo — Precision Doctrine</button>
-    <button class="theme-btn" data-theme="havana">Havana — Resourceful Trade</button>
+    <button class="theme-btn active" data-theme="cairo" data-short="Cairo">Cairo — Ancient Statecraft</button>
+    <button class="theme-btn" data-theme="wallstreet" data-short="Wall St">Wall Street — Capital Warfare</button>
+    <button class="theme-btn" data-theme="lagos" data-short="Lagos">Lagos — The Hustle</button>
+    <button class="theme-btn" data-theme="tokyo" data-short="Tokyo">Tokyo — Precision Doctrine</button>
+    <button class="theme-btn" data-theme="havana" data-short="Havana">Havana — Resourceful Trade</button>
   </div>
 
   <div class="mp-row">
