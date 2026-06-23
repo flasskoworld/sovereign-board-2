@@ -1128,6 +1128,70 @@ const PST = {
 
 // AI search depth per location persona - higher = stronger but slower
 const AI_DEPTH = { cairo:2, wallstreet:2, lagos:1, tokyo:3, havana:2 };
+const MATE_SCORE = 100000;
+const ENDGAME_SEARCH_DEPTH = 5;
+
+function hasOnlyKing(bd,color){
+  return !!findKing(bd,color) && bd.every(row=>row.every(p=>!p || p.color!==color || p.type==='k'));
+}
+
+function hasNonKingPiece(bd,color){
+  return bd.some(row=>row.some(p=>p && p.color===color && p.type!=='k'));
+}
+
+function isFinishingEndgame(bd,color){
+  return hasOnlyKing(bd,otherColor(color)) && hasNonKingPiece(bd,color);
+}
+
+function passedPawnProgressScore(bd,color){
+  let score = 0;
+  const direction = color==='w' ? -1 : 1;
+  for(let r=0;r<8;r++) for(let c=0;c<8;c++){
+    const p = bd[r][c];
+    if(!p || p.color!==color || p.type!=='p') continue;
+    let blocked = false;
+    for(let nr=r+direction; inBounds(nr,c) && !blocked; nr+=direction){
+      for(let dc=-1;dc<=1;dc++){
+        const target = inBounds(nr,c+dc) ? bd[nr][c+dc] : null;
+        if(target && target.color===otherColor(color) && target.type==='p'){
+          blocked = true;
+          break;
+        }
+      }
+    }
+    if(!blocked){
+      const ranksAdvanced = color==='w' ? 6-r : r-1;
+      score += 40 + Math.max(0,ranksAdvanced)*22;
+    }
+  }
+  return score;
+}
+
+function endgamePressureScore(bd){
+  const whiteOnlyKing = hasOnlyKing(bd,'w');
+  const blackOnlyKing = hasOnlyKing(bd,'b');
+  if(whiteOnlyKing===blackOnlyKing) return 0;
+
+  const hunted = whiteOnlyKing ? 'w' : 'b';
+  const hunter = otherColor(hunted);
+  if(!hasNonKingPiece(bd,hunter)) return 0;
+
+  const huntedKing = findKing(bd,hunted);
+  const hunterKing = findKing(bd,hunter);
+  if(!huntedKing || !hunterKing) return 0;
+
+  const mobility = allLegalMoves(bd,hunted,{ep:null,skipCastle:true}).length;
+  const edgeDistance = Math.min(huntedKing[0],7-huntedKing[0],huntedKing[1],7-huntedKing[1]);
+  const kingDistance = Math.abs(huntedKing[0]-hunterKing[0]) + Math.abs(huntedKing[1]-hunterKing[1]);
+  const pressure =
+    (8-Math.min(8,mobility))*26 +
+    (3-edgeDistance)*20 +
+    (14-kingDistance)*9 +
+    (isInCheck(bd,hunted) ? 70 : 0) +
+    passedPawnProgressScore(bd,hunter);
+
+  return hunter==='w' ? pressure : -pressure;
+}
 
 function evaluateBoard(bd){
   let score = 0;
@@ -1138,7 +1202,7 @@ function evaluateBoard(bd){
     const val = PIECE_VALUE[p.type] + PST[p.type][pstRow][c];
     score += p.color==='w' ? val : -val;
   }
-  return score;
+  return score + endgamePressureScore(bd);
 }
 
 // applies a move to a CLONE of the board, handling capture/en passant/castling/auto-promotion
@@ -1164,14 +1228,14 @@ function applyMoveSim(bd, move){
 // negamax with alpha-beta pruning. Returns score from `color`'s perspective (positive = good for color).
 // Deeper plies ignore castling/en passant for simplicity - those rights rarely swing a shallow search.
 function negamax(bd, depth, alpha, beta, color){
+  const moves = allLegalMoves(bd, color, {ep:null, skipCastle:true});
+  if(moves.length===0){
+    if(isInCheck(bd,color)) return -MATE_SCORE - depth; // prefer a faster checkmate
+    return 0; // stalemate
+  }
   if(depth===0){
     const raw = evaluateBoard(bd);
     return color==='w' ? raw : -raw;
-  }
-  const moves = allLegalMoves(bd, color, {ep:null, skipCastle:true});
-  if(moves.length===0){
-    if(isInCheck(bd,color)) return -100000 - depth; // being mated now is worse than being mated later
-    return 0; // stalemate
   }
   let best = -Infinity;
   for(const m of moves){
@@ -1191,6 +1255,8 @@ function getBestMoveForAI(bd, color, depth){
   let alpha = -Infinity, beta = Infinity;
   for(const m of moves){
     const newBoard = applyMoveSim(bd, m);
+    const replies = allLegalMoves(newBoard, otherColor(color), {ep:null, skipCastle:true});
+    if(replies.length===0 && isInCheck(newBoard,otherColor(color))) return m;
     const score = -negamax(newBoard, depth-1, -beta, -alpha, otherColor(color));
     if(score > bestScore + 0.5){ bestScore = score; bestMoves = [m]; }
     else if(Math.abs(score-bestScore) <= 0.5){ bestMoves.push(m); }
@@ -1522,7 +1588,9 @@ function showCodex(pieceType){
 
 function aiMove(){
   if(gameOver) return;
-  const depth = AI_DEPTH[currentTheme] || 2;
+  const depth = isFinishingEndgame(board,'b')
+    ? Math.max(AI_DEPTH[currentTheme] || 2, ENDGAME_SEARCH_DEPTH)
+    : (AI_DEPTH[currentTheme] || 2);
   const move = getBestMoveForAI(board, 'b', depth);
   if(!move) return;
   makeMove(move.from, move.to, 'b', move.meta);
