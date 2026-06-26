@@ -1867,15 +1867,18 @@ document.querySelectorAll('.theme-btn').forEach(btn=>{
 });
 
 document.body.dataset.theme = currentTheme;
-startNewGame();
-
 const urlRoom = new URLSearchParams(location.search).get('room');
 if(urlRoom){
+  // Challenge links always put the sender on White and the recipient on Black.
+  // Start a neutral board here so the CPU side picker never appears over the join flow.
+  newGame();
   if(!firebaseReady()){
     alert("This is a challenge link, but Firebase isn't configured in this copy of the file yet.");
   } else {
     openJoinModal(urlRoom);
   }
+} else {
+  startNewGame();
 }
 </script>
 </body>
