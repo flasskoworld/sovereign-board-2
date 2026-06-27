@@ -40,6 +40,26 @@
     --accent:#b68af2; --accent-soft:#b68af233; --text:#f4edfb; --text-dim:#c6b4d8;
     --border:#39294c;
   }
+  [data-theme="delhi"]{
+    --bg:#100d08; --panel:#171209; --board-light:#f0c06d; --board-dark:#3f2613;
+    --accent:#f28c28; --accent-soft:#f28c2833; --text:#fff0d5; --text-dim:#c3a276;
+    --border:#3d2a17;
+  }
+  [data-theme="rome"]{
+    --bg:#0e0d0b; --panel:#17130f; --board-light:#d8c2a0; --board-dark:#4d2522;
+    --accent:#b73832; --accent-soft:#b7383233; --text:#f3eadc; --text-dim:#baa995;
+    --border:#412723;
+  }
+  [data-theme="london"]{
+    --bg:#081016; --panel:#0d171e; --board-light:#c5d2d7; --board-dark:#263f51;
+    --accent:#d8b14a; --accent-soft:#d8b14a33; --text:#edf3f4; --text-dim:#9fb2b9;
+    --border:#223542;
+  }
+  [data-theme="persia"]{
+    --bg:#080f15; --panel:#0e1920; --board-light:#8ed6cf; --board-dark:#183d4c;
+    --accent:#2fb7c7; --accent-soft:#2fb7c733; --text:#ecfbf8; --text-dim:#9cc8c6;
+    --border:#1c3943;
+  }
   *{box-sizing:border-box;}
   body{
     margin:0; background:var(--bg); color:var(--text); position:relative;
@@ -60,7 +80,11 @@
   body[data-theme="lagos"] .amb-lagos,
   body[data-theme="tokyo"] .amb-tokyo,
   body[data-theme="havana"] .amb-havana,
-  body[data-theme="meroe"] .amb-meroe{ display:block; }
+  body[data-theme="meroe"] .amb-meroe,
+  body[data-theme="delhi"] .amb-delhi,
+  body[data-theme="rome"] .amb-rome,
+  body[data-theme="london"] .amb-london,
+  body[data-theme="persia"] .amb-persia{ display:block; }
 
   .amb-cairo{
     background:repeating-linear-gradient(120deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 90px);
@@ -93,6 +117,32 @@
       repeating-linear-gradient(45deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 76px),
       repeating-linear-gradient(-45deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 76px);
     animation: driftGrid 30s linear infinite;
+  }
+  .amb-delhi{
+    background:
+      radial-gradient(circle at 22px 22px, var(--accent) 1px, transparent 2px),
+      repeating-linear-gradient(135deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 112px);
+    background-size:88px 88px, auto;
+    animation: driftDiagonal 34s linear infinite;
+  }
+  .amb-rome{
+    background:
+      repeating-linear-gradient(90deg, transparent 0px, transparent 48px, var(--accent) 49px, transparent 50px),
+      repeating-linear-gradient(0deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 96px);
+    animation: driftHorizontal 32s linear infinite;
+  }
+  .amb-london{
+    background:
+      repeating-linear-gradient(25deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 130px),
+      repeating-linear-gradient(-25deg, var(--accent) 0px, var(--accent) 1px, transparent 1px, transparent 130px);
+    animation: driftWave 28s ease-in-out infinite;
+  }
+  .amb-persia{
+    background:
+      radial-gradient(circle at 40px 40px, var(--accent) 1.5px, transparent 2px),
+      repeating-linear-gradient(45deg, transparent 0px, transparent 70px, var(--accent) 71px, transparent 72px);
+    background-size:120px 120px, auto;
+    animation: driftGrid 36s linear infinite;
   }
 
   @keyframes driftDiagonal{ 0%{ background-position:0 0; } 100%{ background-position:600px 600px; } }
@@ -318,36 +368,33 @@
   .presence-dot{width:7px; height:7px; border-radius:50%; background:var(--text-dim); flex-shrink:0;}
   .presence-dot.online{background:var(--accent); box-shadow:0 0 0 3px var(--accent-soft);}
 
-  .side-picker{
-    position:fixed; inset:0; z-index:45; display:none; align-items:center; justify-content:center;
-    padding:20px; background:rgba(5,6,9,.16); pointer-events:none;
-  }
-  .side-picker.show{display:flex;}
+  .side-picker{display:none; margin:-12px 0 28px;}
+  .side-picker.show{display:block;}
   .side-picker-card{
-    width:min(100%,440px); padding:26px; background:var(--panel);
+    width:min(100%,520px); padding:18px; background:var(--panel);
     border:1px solid var(--border); border-top-color:var(--accent); border-radius:4px;
-    box-shadow:0 22px 60px rgba(0,0,0,.34); pointer-events:auto;
+    box-shadow:0 18px 42px rgba(0,0,0,.24);
   }
   .side-picker-kicker{
     margin:0 0 8px; color:var(--accent); font-family:'Space Mono',monospace;
     font-size:10px; letter-spacing:.16em; text-transform:uppercase;
   }
-  .side-picker-card h2{margin:0 0 7px; font-family:'Playfair Display',serif; font-size:25px;}
-  .side-picker-card p{margin:0 0 20px; color:var(--text-dim); font-size:13px; line-height:1.5;}
+  .side-picker-card h2{margin:0 0 6px; font-family:'Playfair Display',serif; font-size:22px;}
+  .side-picker-card p{margin:0 0 14px; color:var(--text-dim); font-size:13px; line-height:1.5;}
   .side-options{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px;}
   .side-option{
-    min-height:120px; padding:16px; border:1px solid var(--border); border-radius:3px;
+    min-height:92px; padding:14px; border:1px solid var(--border); border-radius:3px;
     background:transparent; color:var(--text); cursor:pointer; text-align:left;
     font-family:'Space Mono',monospace; transition:border-color .2s ease, background .2s ease, color .2s ease;
   }
   .side-option:hover{border-color:var(--accent); background:var(--accent-soft);}
-  .side-option-mark{display:block; margin-bottom:12px; color:var(--accent); font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; font-size:34px; line-height:1;}
+  .side-option-mark{display:block; margin-bottom:8px; color:var(--accent); font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; font-size:30px; line-height:1;}
   .side-option strong{display:block; font-size:12px; font-weight:400; letter-spacing:.08em; text-transform:uppercase;}
   .side-option span:last-child{display:block; margin-top:6px; color:var(--text-dim); font-size:10px; letter-spacing:.03em;}
   @media (max-width:520px){
-    .side-picker{align-items:flex-end; padding:14px;}
-    .side-picker-card{padding:22px;}
-    .side-option{min-height:108px; padding:14px;}
+    .side-picker{margin:-4px 0 20px;}
+    .side-picker-card{padding:14px;}
+    .side-option{min-height:86px; padding:12px;}
   }
 
   .modal-overlay{
@@ -456,6 +503,10 @@
   <div class="amb amb-tokyo"></div>
   <div class="amb amb-havana"></div>
   <div class="amb amb-meroe"></div>
+  <div class="amb amb-delhi"></div>
+  <div class="amb amb-rome"></div>
+  <div class="amb amb-london"></div>
+  <div class="amb amb-persia"></div>
 </div>
 <div class="wrap" data-theme="cairo" id="root">
 
@@ -470,6 +521,10 @@
     <button class="theme-btn" data-theme="tokyo" data-short="Tokyo">Tokyo — Precision Doctrine</button>
     <button class="theme-btn" data-theme="havana" data-short="Havana">Havana — Resourceful Trade</button>
     <button class="theme-btn" data-theme="meroe" data-short="Meroë">Meroë — Kandake Rule</button>
+    <button class="theme-btn" data-theme="delhi" data-short="Delhi">Delhi — Imperial Calculation</button>
+    <button class="theme-btn" data-theme="rome" data-short="Rome">Rome — Senate Gambit</button>
+    <button class="theme-btn" data-theme="london" data-short="London">London — Crown Defense</button>
+    <button class="theme-btn" data-theme="persia" data-short="Persia">Persia — Silk Road Stratagem</button>
   </div>
 
   <div class="mp-row">
@@ -478,6 +533,26 @@
       <span class="presence-dot" id="presenceDot"></span>
       <span id="presenceText"></span>
     </p>
+  </div>
+
+  <div class="side-picker" id="cpuSidePicker" role="dialog" aria-modal="false" aria-labelledby="cpuSideTitle">
+    <div class="side-picker-card">
+      <p class="side-picker-kicker">CPU match</p>
+      <h2 id="cpuSideTitle">Choose your side</h2>
+      <p>Browse locations first. When you pick a side, that board locks in until New game.</p>
+      <div class="side-options">
+        <button class="side-option" onclick="chooseCpuSide('w', event)">
+          <span class="side-option-mark">♔︎</span>
+          <strong>Play White</strong>
+          <span>You open the game</span>
+        </button>
+        <button class="side-option" onclick="chooseCpuSide('b', event)">
+          <span class="side-option-mark">♚︎</span>
+          <strong>Play Black</strong>
+          <span>CPU makes the first move</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="layout">
@@ -537,26 +612,6 @@
     </div>
   </div>
 
-  <div class="side-picker" id="cpuSidePicker" role="dialog" aria-modal="true" aria-labelledby="cpuSideTitle">
-    <div class="side-picker-card">
-      <p class="side-picker-kicker">CPU match</p>
-      <h2 id="cpuSideTitle">Choose your side</h2>
-      <p>Set the board from your perspective. The CPU takes the other color.</p>
-      <div class="side-options">
-        <button class="side-option" onclick="chooseCpuSide('w', event)">
-          <span class="side-option-mark">♔︎</span>
-          <strong>Play White</strong>
-          <span>You open the game</span>
-        </button>
-        <button class="side-option" onclick="chooseCpuSide('b', event)">
-          <span class="side-option-mark">♚︎</span>
-          <strong>Play Black</strong>
-          <span>CPU makes the first move</span>
-        </button>
-      </div>
-    </div>
-  </div>
-
   <div class="modal-overlay" id="mpModal">
     <div class="modal-card">
       <button class="modal-close" onclick="closeMpModal()">&#10005;</button>
@@ -598,7 +653,11 @@ const PERSONAS = {
   lagos:{ name:'The Hustler', desc:'Aggressive and opportunistic. Takes risks early, punishes hesitation.' },
   tokyo:{ name:'The Architect', desc:'Methodical and exact. Builds quiet structural traps and rarely overextends.' },
   havana:{ name:'The Broker', desc:'Resourceful under constraint. Squeezes maximum value out of every exchange.' },
-  meroe:{ name:'The Kandake', desc:'Regal and deliberate. Claims space, protects the center, then converts advantage with patient authority.' }
+  meroe:{ name:'The Kandake', desc:'Regal and deliberate. Claims space, protects the center, then converts advantage with patient authority.' },
+  delhi:{ name:'The Maharaja', desc:'Expansive and layered. Builds pressure through pawn structure, then turns quiet space into command.' },
+  rome:{ name:'The Consul', desc:'Disciplined and martial. Develops cleanly, contests open files, and favors coordinated piece attacks.' },
+  london:{ name:'The Crown', desc:'Reserved and defensive. Fortifies first, trades with care, then converts small advantages late.' },
+  persia:{ name:'The Shah', desc:'Elegant and tactical. Uses diagonals, passed pawns, and long-range threats to stretch the board.' }
 };
 
 const CODEX_NOTES = {
@@ -745,6 +804,16 @@ function toggleSound(){
   document.getElementById('soundToggle').classList.toggle('muted', !soundEnabled);
 }
 
+function applyTheme(theme){
+  if(!PERSONAS[theme]) return;
+  currentTheme = theme;
+  document.getElementById('root').dataset.theme = currentTheme;
+  document.body.dataset.theme = currentTheme;
+  document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active', b.dataset.theme===currentTheme));
+  document.getElementById('personaName').textContent = PERSONAS[currentTheme].name;
+  document.getElementById('personaDesc').textContent = PERSONAS[currentTheme].desc;
+}
+
 // ---------- Multiplayer: modal + room flow ----------
 function openChallengeModal(){
   const existing = getStoredName();
@@ -758,16 +827,31 @@ function openChallengeModal(){
   document.getElementById('mpModal').dataset.flow = 'create';
 }
 function openJoinModal(room){
-  const existing = getStoredName();
-  document.getElementById('mpModalTitle').textContent = "You've been challenged";
-  document.getElementById('mpModalSub').textContent = 'Type your name to join the board.';
-  document.getElementById('mpNameInput').value = existing;
-  document.getElementById('mpPrimaryBtn').textContent = 'Join the board';
-  document.getElementById('mpPrimaryBtn').style.display = 'block';
-  document.getElementById('linkBox').classList.remove('show');
-  document.getElementById('mpModal').classList.add('show');
-  document.getElementById('mpModal').dataset.flow = 'join';
-  document.getElementById('mpModal').dataset.room = room;
+  const db = getDb();
+  if(!db){
+    alert("Firebase isn't configured yet. Paste your project keys into FIREBASE_CONFIG near the top of the script to enable multiplayer.");
+    return;
+  }
+  db.ref('rooms/'+room).once('value').then(snap=>{
+    const data = snap.val();
+    if(!data || data.players?.b){
+      newGame();
+      alert('This challenge link is no longer available.');
+      return;
+    }
+    if(data.theme) applyTheme(data.theme);
+    newGame();
+    const existing = getStoredName();
+    document.getElementById('mpModalTitle').textContent = "You've been challenged";
+    document.getElementById('mpModalSub').textContent = `${PERSONAS[currentTheme].name} is waiting on ${document.querySelector('.theme-btn.active')?.dataset.short || 'this board'}. Type your name to join.`;
+    document.getElementById('mpNameInput').value = existing;
+    document.getElementById('mpPrimaryBtn').textContent = 'Join the board';
+    document.getElementById('mpPrimaryBtn').style.display = 'block';
+    document.getElementById('linkBox').classList.remove('show');
+    document.getElementById('mpModal').classList.add('show');
+    document.getElementById('mpModal').dataset.flow = 'join';
+    document.getElementById('mpModal').dataset.room = room;
+  });
 }
 function closeMpModal(){
   document.getElementById('mpModal').classList.remove('show');
@@ -821,12 +905,7 @@ function joinRoom(room, name){
     myColor = 'b';
     db.ref('rooms/'+roomId+'/players/b').set(name).then(()=>{
       db.ref('rooms/'+roomId+'/status').set('active');
-      currentTheme = data.theme;
-      document.getElementById('root').dataset.theme = currentTheme;
-      document.body.dataset.theme = currentTheme;
-      document.querySelectorAll('.theme-btn').forEach(b=>b.classList.toggle('active', b.dataset.theme===currentTheme));
-      document.getElementById('personaName').textContent = PERSONAS[currentTheme].name;
-      document.getElementById('personaDesc').textContent = PERSONAS[currentTheme].desc;
+      if(data.theme) applyTheme(data.theme);
       enterOnlineMode();
       closeMpModal();
     });
@@ -1198,7 +1277,7 @@ const PST = {
 };
 
 // AI search depth per location persona - higher = stronger but slower
-const AI_DEPTH = { cairo:2, wallstreet:2, lagos:1, tokyo:3, havana:2, meroe:2 };
+const AI_DEPTH = { cairo:2, wallstreet:2, lagos:1, tokyo:3, havana:2, meroe:2, delhi:2, rome:2, london:2, persia:2 };
 const MATE_SCORE = 100000;
 const ENDGAME_SEARCH_DEPTH = 5;
 
@@ -1856,23 +1935,16 @@ function newGame(){
 
 document.querySelectorAll('.theme-btn').forEach(btn=>{
   btn.addEventListener('click', ()=>{
-    document.querySelectorAll('.theme-btn').forEach(b=>b.classList.remove('active'));
-    btn.classList.add('active');
-    currentTheme = btn.dataset.theme;
-    document.getElementById('root').dataset.theme = currentTheme;
-    document.body.dataset.theme = currentTheme;
-    document.getElementById('personaName').textContent = PERSONAS[currentTheme].name;
-    document.getElementById('personaDesc').textContent = PERSONAS[currentTheme].desc;
+    applyTheme(btn.dataset.theme);
   });
 });
 
-document.body.dataset.theme = currentTheme;
+applyTheme(currentTheme);
 const urlRoom = new URLSearchParams(location.search).get('room');
 if(urlRoom){
   // Challenge links always put the sender on White and the recipient on Black.
-  // Start a neutral board here so the CPU side picker never appears over the join flow.
-  newGame();
   if(!firebaseReady()){
+    newGame();
     alert("This is a challenge link, but Firebase isn't configured in this copy of the file yet.");
   } else {
     openJoinModal(urlRoom);
