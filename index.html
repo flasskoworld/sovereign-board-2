@@ -192,6 +192,10 @@
     {key:'tokyo',  name:'Tokyo',  doctrine:'Precision Doctrine', opp:'Sensei Aki', style:'Positional', diff:3, lon:139.69, lat:35.68, accent:'#4fc3f7', light:'#cfd8e3', dark:'#1a2c42', line:'Precise and quiet. Every move has a reason \u2014 a clean, even-handed test.'},
     {key:'rome',   name:'Rome',   doctrine:'Senate Gambit', opp:'The Senator', style:'Classical', diff:3, lon:12.4964, lat:41.9028, accent:'#b73832', light:'#d8c2a0', dark:'#4d2522', line:'Composed and principled. Old strategies, well kept \u2014 a fair, balanced fight.'},
     {key:'lagos',  name:'Lagos',  doctrine:'The Hustle', opp:'The Hustler', style:'Aggressive', diff:4, lon:3.3792, lat:6.5244, accent:'#d9622b', light:'#e8b48a', dark:'#2c1d16', line:'Fast, bold and full of energy. Loose moves get punished \u2014 but courage pays off.'},
+    {key:'meroe', name:'Meroë', doctrine:'Kandake Rule', opp:'The Kandake', style:'Royal', diff:5, lon:33.7234, lat:16.9380, accent:'#b68af2', light:'#d2bee9', dark:'#412b5d', line:'Regal and deliberate. The Kandake claims space, protects the centre, then converts with authority.'},
+    {key:'delhi', name:'Delhi', doctrine:'Imperial Calculation', opp:'The Maharaja', style:'Layered', diff:4, lon:77.2090, lat:28.6139, accent:'#f28c28', light:'#f0c06d', dark:'#3f2613', line:'Expansive and layered. Delhi builds pressure through structure before turning space into command.'},
+    {key:'london', name:'London', doctrine:'Crown Defense', opp:'The Crown', style:'Fortified', diff:4, lon:-0.1276, lat:51.5072, accent:'#d8b14a', light:'#c5d2d7', dark:'#263f51', line:'Reserved and defensive. The Crown fortifies first, trades with care, then converts late.'},
+    {key:'persia', name:'Persia', doctrine:'Silk Road Stratagem', opp:'The Shah', style:'Diagonal', diff:4, lon:51.3890, lat:35.6892, accent:'#2fb7c7', light:'#8ed6cf', dark:'#183d4c', line:'Elegant and tactical. Persia stretches the board with diagonals, passed pawns, and long-range threats.'},
     {key:'wallstreet', name:'Wall St', doctrine:'Capital Warfare', opp:'The Broker', style:'Ruthless', diff:5, lon:-74.006, lat:40.7128, accent:'#2fae76', light:'#c9d2d6', dark:'#17312a', line:'Disciplined and unforgiving. The real exam \u2014 save this seat for when you\u2019re ready.'}
   ];
   var DIFF_LABELS = {1:'Just learning',2:'Gentle',3:'Even',4:'Sharp',5:'Tough'};
@@ -490,7 +494,7 @@
     } else {
       mapInner='<div class="map-fallback"></div>';
     }
-    var fallbackPos={havana:[23,54],cairo:[53,46],tokyo:[84,43],rome:[51,40],lagos:[49,60],wallstreet:[26,40]};
+    var fallbackPos={havana:[23,54],cairo:[53,46],tokyo:[84,43],rome:[51,40],lagos:[49,60],meroe:[55,56],delhi:[67,47],london:[48,36],persia:[61,43],wallstreet:[26,40]};
     var pins=CITIES.map(function(ci){
       var lx,ty;
       if(projection){ var xy=projection([ci.lon,ci.lat]); lx=xy[0]/360*100; ty=xy[1]/180*100; }
