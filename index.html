@@ -168,6 +168,8 @@
   .actions{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
   .act{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; display:flex; flex-direction:column; align-items:center; gap:4px; padding:11px; border-radius:10px; cursor:pointer; border:1px solid var(--border); background:var(--panel); color:var(--dim);}
   .act .g{font-size:16px;}
+  .act{position:relative;}
+  .chat-badge{position:absolute; top:8px; right:10px; min-width:18px; height:18px; padding:0 5px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#0b0e14; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; line-height:1;}
   .act.primary{border-color:var(--accent); background:var(--accent-soft); color:var(--text);}
   .act.dim{opacity:.5;}
   .log{border:1px solid var(--border); border-radius:10px; background:var(--panel); padding:12px 15px;}
@@ -328,7 +330,7 @@
     gems:[], playerMoveCount:0, firstCapture:false,
     codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
-    chat:[], chatOpen:false, chatDraft:'',
+    chat:[], chatOpen:false, chatDraft:'', chatUnread:0,
     online:false, myColor:'w', oppOnline:false, joinOpen:false
   };
   var projection = null, mapPaths = null;
@@ -824,7 +826,14 @@
     if(S.mode==='cpu'&&S.side==='b') setTimeout(opponentMove,700);
   }
   function startGame(){ set({screen:'game',mode:'cpu'}); resetGame(); }
-  function newGame(){ if(S.online){ requestRematch(); } else { resetGame(); } }
+  function newGame(){
+    if(S.online){
+      if(!S.over){ set({coach:'Finish the current duel before starting a rematch.'}); return; }
+      requestRematch();
+    } else {
+      resetGame();
+    }
+  }
 
   // ---------- multiplayer / codex ----------
   function openChallenge(){
@@ -876,7 +885,7 @@
   }
   function enterOnline(color){
     if(S.online) return;
-    set({challengeOpen:false, joinOpen:false, screen:'game', mode:'mp', online:true, myColor:color, chatOpen:false, chat:[]});
+    set({challengeOpen:false, joinOpen:false, screen:'game', mode:'mp', online:true, myColor:color, chatOpen:false, chatDraft:'', chatUnread:0, chat:[]});
     resetOnlineBoard();
     listenMoves(); listenChat(); listenRematch();
   }
@@ -904,7 +913,11 @@
     var db=getDb(); if(!db) return;
     db.ref('rooms/'+roomId+'/chat').on('child_added',function(snap){
       var m=snap.val(); if(!m) return;
-      set({chat:S.chat.concat([{name:m.name,text:m.text}])});
+      var fromMe = m.name===S.mpName;
+      set({
+        chat:S.chat.concat([{name:m.name,text:m.text}]),
+        chatUnread:(!fromMe && !S.chatOpen) ? S.chatUnread+1 : S.chatUnread
+      });
     });
   }
   function listenRematch(){
@@ -913,14 +926,17 @@
       var v=snap.val(); if(v && v!==last){ last=v; resetOnlineBoard(); }
     });
   }
-  function requestRematch(){ try{ getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){} }
+  function requestRematch(){
+    if(S.online && !S.over){ set({coach:'Finish the current duel before starting a rematch.'}); return; }
+    try{ getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){}
+  }
   function leaveRoom(){
     var db=getDb();
     if(db && roomId){ try{ db.ref('rooms/'+roomId+'/presence/'+S.myColor).remove(); db.ref('rooms/'+roomId).off(); }catch(e){} }
     roomId=null;
   }
   function demoJoin(){
-    set({challengeOpen:false, screen:'game', mode:'mp', online:false, chatOpen:false, chat:[{who:'them',text:'good luck \u2014 may the better doctrine win.'}]});
+    set({challengeOpen:false, screen:'game', mode:'mp', online:false, chatOpen:false, chatDraft:'', chatUnread:0, chat:[{who:'them',text:'good luck \u2014 may the better doctrine win.'}]});
     resetGame();
   }
   function doShare(){
@@ -934,7 +950,7 @@
   }
   function toggleChat(){
     if(S.chatOpen) unlockChatViewport();
-    set({chatOpen:!S.chatOpen});
+    set({chatOpen:!S.chatOpen, chatUnread:0});
   }
   function settleChatPanel(){
     var box=document.getElementById('chatMsgs');
@@ -1139,15 +1155,18 @@
 
     var primary;
     if(isMp){
-      primary='<button class="act primary" data-act="chat"><span class="g">\uD83D\uDCAC</span>Chat</button>';
+      var badge=S.chatUnread?'<span class="chat-badge">'+(S.chatUnread>9?'9+':S.chatUnread)+'</span>':'';
+      primary='<button class="act primary" data-act="chat"><span class="g">\uD83D\uDCAC</span>'+badge+'Chat</button>';
     } else {
       var hintDim=(S.turn===S.side&&!S.over)?'':' dim';
       primary='<button class="act primary'+hintDim+'" data-act="hint"><span class="g">\uD83D\uDCA1</span>Hint</button>';
     }
     var undoDim=S.history.length?'':' dim';
+    var rematchDim=(isMp&&!S.over)?' dim':'';
+    var rematchText=isMp?(S.over?'Rematch':'Locked'):'New';
     var actions='<div class="actions">'+primary+
       '<button class="act'+undoDim+'" data-act="undo"><span class="g">\u21b6</span>Undo</button>'+
-      '<button class="act" data-act="new"><span class="g">\u21bb</span>'+(isMp?'Rematch':'New')+'</button></div>';
+      '<button class="act'+rematchDim+'" data-act="new"><span class="g">\u21bb</span>'+rematchText+'</button></div>';
 
     var logInner = S.log.length ? S.log.map(function(m){ return '<span>'+esc(m)+'</span>'; }).join('') : '<span class="empty">No moves yet. Open the war.</span>';
     var log='<div class="log"><p class="lbl">Dispatches</p><div class="body">'+logInner+'</div></div>';
