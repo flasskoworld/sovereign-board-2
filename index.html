@@ -10,6 +10,8 @@
 <script src="./d3-array.min.js"></script>
 <script src="./d3-geo.min.js"></script>
 <script src="./topojson-client.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <style>
   :root{
     --bg:#0b0e14; --panel:#11151d; --border:#2a2620; --text:#ede6d3; --dim:#a39e8c;
@@ -58,7 +60,8 @@
   .dossier{border-left:2px solid var(--accent); padding:18px;}
   .kicker{font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 5px;}
   .dossier h2{font-family:'Playfair Display',serif; font-size:26px; margin:0; line-height:1;}
-  .diff-pill{flex-shrink:0; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:4px 9px; white-space:nowrap; opacity:.85;}
+  .diff-pill{flex-shrink:0; display:inline-flex; align-items:center; gap:2px; color:var(--accent); border:1px solid var(--accent); border-radius:999px; padding:4px 8px; white-space:nowrap; opacity:.9; font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; font-size:13px; line-height:1;}
+  .diff-pill .dim{color:var(--dim); opacity:.28;}
   .dossier .line{font-size:13px; line-height:1.5; color:var(--dim); margin:10px 0 16px;}
   .facts{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:18px;}
   .fact{border-top:1px solid var(--border); padding-top:8px;}
@@ -162,6 +165,15 @@
   .gem.on .gem-h strong{color:var(--text);}
   .gem .b{display:block; font-size:12.5px; line-height:1.5; color:#5a5648;}
   .gem.on .b{color:var(--dim);}
+  .review-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;}
+  .review-stat{border:1px solid var(--border); border-radius:10px; background:#0d1117; padding:12px;}
+  .review-stat span{display:block; font-family:'Space Mono',monospace; font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin-bottom:4px;}
+  .review-stat strong{font-family:'Space Mono',monospace; font-size:12px; color:var(--text); font-weight:400;}
+  .review-list{display:grid; gap:8px;}
+  .review-move{border:1px solid var(--border); border-radius:10px; background:#0d1117; padding:10px 12px; display:grid; grid-template-columns:auto 1fr; gap:8px; align-items:start;}
+  .review-move .n{font-family:'Space Mono',monospace; font-size:10px; color:var(--accent);}
+  .review-move .m{font-family:'Space Mono',monospace; font-size:12px; color:var(--text);}
+  .review-move .by{display:block; margin-top:2px; font-size:11px; color:var(--dim);}
   .step{padding:8px 20px 26px;}
   .step p.d{font-size:13px; line-height:1.5; color:var(--dim); margin:0 0 16px;}
   .field{width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); font-family:'Inter',sans-serif; font-size:15px; padding:12px 13px; border-radius:9px; outline:none; margin-bottom:16px;}
@@ -231,19 +243,94 @@
   var S = {
     screen:'home', cityKey:'havana', side:'w', mode:'cpu',
     board:startBoard(), turn:'w', selected:null, legal:[], last:null,
-    captured:{w:[],b:[]}, log:[], coach:'', hintMove:null, history:[],
+    castling:{wK:true,wQ:true,bK:true,bQ:true}, ep:null, check:false,
+    captured:{w:[],b:[]}, log:[], review:[], coach:'', hintMove:null, history:[],
     over:false, overTitle:'', overNote:'',
     gems:[], playerMoveCount:0, firstCapture:false,
-    codexOpen:false, challengeOpen:false, mpStep:'create',
+    codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
-    chat:[], chatOpen:false
+    chat:[], chatOpen:false,
+    online:false, myColor:'w', oppOnline:false, joinOpen:false
   };
   var projection = null, mapPaths = null;
+
+  // ---------- firebase ----------
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyCpKnLU4Rj1__gU6bj0_gSsNROIpLDKglA",
+    authDomain: "sovereignboard-74e2c.firebaseapp.com",
+    databaseURL: "https://sovereignboard-74e2c-default-rtdb.firebaseio.com",
+    projectId: "sovereignboard-74e2c"
+  };
+  var fbDb=null, roomId=null, pendingRoom=null;
+  function firebaseReady(){ return typeof firebase!=='undefined' && !!FIREBASE_CONFIG.apiKey; }
+  function getDb(){
+    if(fbDb) return fbDb;
+    if(!firebaseReady()) return null;
+    try{ firebase.initializeApp(FIREBASE_CONFIG); }catch(e){}
+    try{ fbDb=firebase.database(); }catch(e){ fbDb=null; }
+    return fbDb;
+  }
+  function makeRoomId(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
+  function roomUrl(id){ return location.origin+location.pathname+'?room='+id; }
 
   function set(patch, cb){ for(var k in patch) S[k]=patch[k]; render(); if(cb) cb(); }
   function city(){ for(var i=0;i<CITIES.length;i++){ if(CITIES[i].key===S.cityKey) return CITIES[i]; } return CITIES[0]; }
   function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function difficultyKings(diff){
+    var out='';
+    for(var i=1;i<=5;i++) out += '<span'+(i>diff?' class="dim"':'')+'>\u265A\uFE0E</span>';
+    return out;
+  }
+  function difficultyKingsText(diff){
+    var out='';
+    for(var i=1;i<=5;i++) out += i<=diff ? '\u265A\uFE0E' : '\u25CC';
+    return out;
+  }
+  function resultText(){
+    if(!S.over) return 'In progress';
+    return S.overTitle || 'The board is settled';
+  }
+
+  // ---------- sound ----------
+  var audioCtx=null, soundEnabled=true;
+  function getAudioCtx(){
+    if(!soundEnabled) return null;
+    try{
+      if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+      if(audioCtx.state==='suspended') audioCtx.resume();
+      return audioCtx;
+    }catch(e){ return null; }
+  }
+  function playTone(freq,duration,type,gainPeak,startDelay){
+    var ctx=getAudioCtx(); if(!ctx) return;
+    var osc=ctx.createOscillator(), gain=ctx.createGain();
+    osc.type=type||'sine'; osc.frequency.value=freq;
+    osc.connect(gain); gain.connect(ctx.destination);
+    var now=ctx.currentTime+(startDelay||0);
+    gain.gain.setValueAtTime(0,now);
+    gain.gain.linearRampToValueAtTime(gainPeak||0.15,now+0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001,now+duration);
+    osc.start(now); osc.stop(now+duration+0.03);
+  }
+  function playMoveSound(){
+    var ctx=getAudioCtx(); if(!ctx) return;
+    var len=Math.floor(ctx.sampleRate*0.035);
+    var buffer=ctx.createBuffer(1,len,ctx.sampleRate);
+    var data=buffer.getChannelData(0);
+    for(var i=0;i<len;i++) data[i]=(Math.random()*2-1)*Math.pow(1-i/len,3);
+    var noise=ctx.createBufferSource(), filter=ctx.createBiquadFilter(), gain=ctx.createGain();
+    noise.buffer=buffer;
+    filter.type='bandpass'; filter.frequency.value=1100; filter.Q.value=1.1;
+    gain.gain.setValueAtTime(0.18,ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+0.05);
+    noise.connect(filter); filter.connect(gain); gain.connect(ctx.destination);
+    noise.start();
+  }
+  function playCaptureSound(){ playTone(180,0.26,'triangle',0.18,0); playTone(92,0.32,'sine',0.13,0.02); }
+  function playCheckSound(){ playTone(660,0.12,'sine',0.14,0); playTone(880,0.18,'sine',0.12,0.1); }
+  function playCheckmateSound(){ [523.25,392,329.63,261.63].forEach(function(f,i){ playTone(f,0.5,'triangle',0.13,i*0.16); }); }
+  function playStalemateSound(){ playTone(330,0.4,'sine',0.11,0); playTone(247,0.5,'sine',0.09,0.15); }
 
   // ---------- engine ----------
   function startBoard(){
@@ -324,41 +411,142 @@
     return best;
   }
 
+  // ---------- full legal-move engine ----------
+  function kingSq(board,color){ var k=color+'K'; for(var i=0;i<64;i++) if(board[i]===k) return i; return -1; }
+  function attacked(board,sq,by){
+    if(sq<0) return false;
+    var tr=Math.floor(sq/8), tc=sq%8;
+    var pd = by==='w'?1:-1;
+    for(var dc=-1;dc<=1;dc+=2){ var pr=tr+pd, pc=tc+dc; if(pr>=0&&pr<8&&pc>=0&&pc<8 && board[pr*8+pc]===by+'P') return true; }
+    var kn=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    for(var n=0;n<kn.length;n++){ var r=tr+kn[n][0],c=tc+kn[n][1]; if(r>=0&&r<8&&c>=0&&c<8&&board[r*8+c]===by+'N') return true; }
+    var kd=[[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+    for(var m=0;m<kd.length;m++){ var r2=tr+kd[m][0],c2=tc+kd[m][1]; if(r2>=0&&r2<8&&c2>=0&&c2<8&&board[r2*8+c2]===by+'K') return true; }
+    var orth=[[-1,0],[1,0],[0,-1],[0,1]];
+    for(var o=0;o<orth.length;o++){ var rr=tr+orth[o][0],cc=tc+orth[o][1]; while(rr>=0&&rr<8&&cc>=0&&cc<8){ var pp=board[rr*8+cc]; if(pp){ if(pp[0]===by&&(pp[1]==='R'||pp[1]==='Q')) return true; break; } rr+=orth[o][0]; cc+=orth[o][1]; } }
+    var diag=[[-1,-1],[-1,1],[1,-1],[1,1]];
+    for(var d2=0;d2<diag.length;d2++){ var r3=tr+diag[d2][0],c3=tc+diag[d2][1]; while(r3>=0&&r3<8&&c3>=0&&c3<8){ var q=board[r3*8+c3]; if(q){ if(q[0]===by&&(q[1]==='B'||q[1]==='Q')) return true; break; } r3+=diag[d2][0]; c3+=diag[d2][1]; } }
+    return false;
+  }
+  function inCheck(board,color){ return attacked(board,kingSq(board,color),color==='w'?'b':'w'); }
+  function pseudoFull(board,i,castling,ep){
+    var p=board[i]; if(!p) return [];
+    var side=p[0],type=p[1],r=Math.floor(i/8),c=i%8,out=[];
+    function add(to,ex){ var mm={from:i,to:to}; if(ex) for(var k in ex) mm[k]=ex[k]; out.push(mm); }
+    function enemy(j){ return board[j]&&board[j][0]!==side; }
+    function empty(j){ return !board[j]; }
+    function slide(ds){ ds.forEach(function(d){ var rr=r+d[0],cc=c+d[1]; while(rr>=0&&rr<8&&cc>=0&&cc<8){ var j=rr*8+cc; if(empty(j)) add(j); else { if(enemy(j)) add(j); break; } rr+=d[0]; cc+=d[1]; } }); }
+    if(type==='P'){
+      var dir=side==='w'?-1:1, start=side==='w'?6:1;
+      if(r+dir>=0&&r+dir<8&&empty((r+dir)*8+c)){ add((r+dir)*8+c,(r+dir===0||r+dir===7)?{promo:true}:null); if(r===start&&empty((r+2*dir)*8+c)) add((r+2*dir)*8+c,{dbl:true}); }
+      [-1,1].forEach(function(dc){ var nr=r+dir,nc=c+dc; if(nr>=0&&nr<8&&nc>=0&&nc<8){ var j=nr*8+nc; if(enemy(j)) add(j,(nr===0||nr===7)?{promo:true}:null); else if(ep!==null&&j===ep) add(j,{ep:true}); } });
+    } else if(type==='N'){
+      [[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]].forEach(function(d){ var nr=r+d[0],nc=c+d[1]; if(nr>=0&&nr<8&&nc>=0&&nc<8){ var j=nr*8+nc; if(empty(j)||enemy(j)) add(j); } });
+    } else if(type==='B'){ slide([[-1,-1],[-1,1],[1,-1],[1,1]]); }
+    else if(type==='R'){ slide([[-1,0],[1,0],[0,-1],[0,1]]); }
+    else if(type==='Q'){ slide([[-1,-1],[-1,1],[1,-1],[1,1],[-1,0],[1,0],[0,-1],[0,1]]); }
+    else if(type==='K'){
+      [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]].forEach(function(d){ var nr=r+d[0],nc=c+d[1]; if(nr>=0&&nr<8&&nc>=0&&nc<8){ var j=nr*8+nc; if(empty(j)||enemy(j)) add(j); } });
+      var opp=side==='w'?'b':'w', hr=side==='w'?7:0, base=hr*8;
+      if(r===hr&&c===4&&!attacked(board,i,opp)){
+        var kOk=side==='w'?castling.wK:castling.bK, qOk=side==='w'?castling.wQ:castling.bQ;
+        if(kOk&&empty(base+5)&&empty(base+6)&&board[base+7]===side+'R'&&!attacked(board,base+5,opp)&&!attacked(board,base+6,opp)) add(base+6,{castle:'K'});
+        if(qOk&&empty(base+3)&&empty(base+2)&&empty(base+1)&&board[base+0]===side+'R'&&!attacked(board,base+3,opp)&&!attacked(board,base+2,opp)) add(base+2,{castle:'Q'});
+      }
+    }
+    return out;
+  }
+  function applyFull(board,m,castling,ep){
+    var nb=board.slice(), color=nb[m.from][0], type=nb[m.from][1], captured=nb[m.to];
+    if(m.ep){ var capSq=Math.floor(m.from/8)*8+(m.to%8); captured=nb[capSq]; nb[capSq]=null; }
+    var moving=nb[m.from];
+    if(m.promo||(type==='P'&&(Math.floor(m.to/8)===0||Math.floor(m.to/8)===7))) moving=color+'Q';
+    nb[m.to]=moving; nb[m.from]=null;
+    if(m.castle){ var b=Math.floor(m.from/8)*8; if(m.castle==='K'){ nb[b+5]=color+'R'; nb[b+7]=null; } else { nb[b+3]=color+'R'; nb[b+0]=null; } }
+    var nc={wK:castling.wK,wQ:castling.wQ,bK:castling.bK,bQ:castling.bQ};
+    if(type==='K'){ if(color==='w'){ nc.wK=false; nc.wQ=false; } else { nc.bK=false; nc.bQ=false; } }
+    if(m.from===63||m.to===63) nc.wK=false;
+    if(m.from===56||m.to===56) nc.wQ=false;
+    if(m.from===7||m.to===7) nc.bK=false;
+    if(m.from===0||m.to===0) nc.bQ=false;
+    var nep=null;
+    if(m.dbl) nep=(Math.floor(m.from/8)+Math.floor(m.to/8))/2*8+(m.to%8);
+    return {board:nb,castling:nc,ep:nep,captured:captured};
+  }
+  function legalMoves(board,i,castling,ep){
+    var p=board[i]; if(!p) return [];
+    var color=p[0], opp=color==='w'?'b':'w', ps=pseudoFull(board,i,castling,ep), out=[];
+    for(var k=0;k<ps.length;k++){ var res=applyFull(board,ps[k],castling,ep); if(!attacked(res.board,kingSq(res.board,color),opp)) out.push(ps[k]); }
+    return out;
+  }
+  function legalTargets(board,i,castling,ep){ return legalMoves(board,i,castling,ep).map(function(m){ return m.to; }); }
+  function legalAll(board,side,castling,ep){ var out=[]; for(var i=0;i<64;i++){ if(board[i]&&board[i][0]===side){ var lm=legalMoves(board,i,castling,ep); for(var k=0;k<lm.length;k++) out.push(lm[k]); } } return out; }
+  function deriveMeta(board,from,to){
+    var type=board[from][1], m={from:from,to:to};
+    if(type==='K'&&Math.abs((to%8)-(from%8))===2) m.castle=(to%8===6?'K':'Q');
+    if(type==='P'&&(to%8)!==(from%8)&&!board[to]) m.ep=true;
+    if(type==='P'&&Math.abs(Math.floor(to/8)-Math.floor(from/8))===2) m.dbl=true;
+    if(type==='P'&&(Math.floor(to/8)===0||Math.floor(to/8)===7)) m.promo=true;
+    return m;
+  }
+  function aiPick(board,side,depth,castling,ep){
+    var moves=legalAll(board,side,castling,ep);
+    if(!moves.length) return null;
+    moves.sort(function(a,b){ var ca=board[a.to]?SVAL[board[a.to][1]]:0, cb=board[b.to]?SVAL[board[b.to][1]]:0; return cb-ca; });
+    var best=null,bestScore=-Infinity;
+    for(var k=0;k<moves.length;k++){
+      var res=applyFull(board,moves[k],castling,ep);
+      var sc=-negamax(res.board,depth-1,side==='w'?'b':'w',-Infinity,Infinity);
+      sc+=Math.random()*6;
+      if(sc>bestScore){ bestScore=sc; best=moves[k]; }
+    }
+    return best;
+  }
+
   // ---------- gameplay ----------
   function handleCell(i){
     if(S.over) return;
-    var mover = S.mode==='mp' ? S.turn : S.side;
+    var isOnline = S.mode==='mp' && S.online;
     if(S.mode==='cpu' && S.turn!==S.side) return;
+    if(isOnline && S.turn!==S.myColor) return;
+    var mover = isOnline ? S.myColor : (S.mode==='mp' ? S.turn : S.side);
     var p=S.board[i];
-    if(S.selected!==null && S.legal.indexOf(i)>=0){ doMove(S.selected,i,true); return; }
-    if(p && p[0]===mover){ set({selected:i, legal:movesFor(S.board,i), hintMove:null}); }
+    if(S.selected!==null && S.legal.indexOf(i)>=0){ doMove(S.selected,i,'human'); return; }
+    if(p && p[0]===mover){ set({selected:i, legal:legalTargets(S.board,i,S.castling,S.ep), hintMove:null}); }
     else { set({selected:null, legal:[]}); }
   }
   function notation(board,from,to){
     var p=board[from],fr=Math.floor(from/8),fc=from%8,tr=Math.floor(to/8),tc=to%8;
     return GLYPH[p[1]]+FILES[fc]+(8-fr)+(board[to]?'x':'\u2013')+FILES[tc]+(8-tr);
   }
-  function doMove(from,to,byHuman){
-    var board=S.board.slice();
+  function doMove(from,to,source){
+    var byHuman = source==='human';
+    var meta=deriveMeta(S.board,from,to);
+    var res=applyFull(S.board,meta,S.castling,S.ep);
+    var board=res.board, taken=res.captured;
     var captured={w:S.captured.w.slice(),b:S.captured.b.slice()};
-    var taken=board[to];
-    var note=notation(board,from,to);
     if(taken){ captured[taken[0]].push(GLYPH[taken[1]]); }
-    var moving=board[from], tr=Math.floor(to/8);
-    if(moving[1]==='P'&&(tr===0||tr===7)) moving=moving[0]+'Q';
-    board[to]=moving; board[from]=null;
-    var history=S.history.concat([{board:S.board,captured:S.captured,last:S.last,log:S.log,turn:S.turn,gems:S.gems,playerMoveCount:S.playerMoveCount,firstCapture:S.firstCapture}]);
+    var fr=Math.floor(from/8),fc=from%8,tr2=Math.floor(to/8),tc=to%8;
+    var note = meta.castle ? (meta.castle==='K'?'O-O':'O-O-O') : (GLYPH[S.board[from][1]]+FILES[fc]+(8-fr)+(taken?'x':'\u2013')+FILES[tc]+(8-tr2));
+    var history=S.history.concat([{board:S.board,castling:S.castling,ep:S.ep,captured:S.captured,last:S.last,log:S.log,review:S.review,turn:S.turn,gems:S.gems,playerMoveCount:S.playerMoveCount,firstCapture:S.firstCapture}]);
     var logThis = byHuman || S.mode==='mp';
     var log = logThis ? S.log.concat([(S.log.length+1)+'. '+note]) : S.log;
+    var actor = S.mode==='mp'
+      ? (S.turn===S.myColor ? (S.mpName||'You') : S.friendName)
+      : (S.turn===S.side ? 'You' : city().opp);
+    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn}]);
     var coach=S.coach;
     if(byHuman && S.mode==='cpu') coach = taken ? pick(CAPTURE_TIPS) : pick(PLAYER_TIPS);
     var pmc = byHuman ? S.playerMoveCount+1 : S.playerMoveCount;
     var firstCapture = S.firstCapture || (!!taken && byHuman);
-    set({board:board,captured:captured,last:{from:from,to:to},selected:null,legal:[],hintMove:null,turn:S.turn==='w'?'b':'w',history:history,log:log,coach:coach,playerMoveCount:pmc,firstCapture:firstCapture});
+    set({board:board,castling:res.castling,ep:res.ep,captured:captured,last:{from:from,to:to},selected:null,legal:[],hintMove:null,turn:S.turn==='w'?'b':'w',history:history,log:log,review:review,coach:coach,playerMoveCount:pmc,firstCapture:firstCapture});
+    if(taken) playCaptureSound(); else playMoveSound();
     if(byHuman) maybeGem();
     checkEnd();
+    if(byHuman && S.online) pushMove(from,to);
     if(byHuman && S.mode==='cpu' && !S.over) setTimeout(opponentMove,700);
   }
+  function pushMove(from,to){ try{ getDb().ref('rooms/'+roomId+'/moves').push({from:from,to:to,by:S.myColor}); }catch(e){} }
   function maybeGem(){
     var target=Math.min(GEMS.length, Math.floor((S.playerMoveCount+1)/2) + (S.firstCapture?1:0));
     if(target>S.gems.length){
@@ -367,33 +555,46 @@
     }
   }
   function checkEnd(){
-    var whiteK=S.board.indexOf('wK')>=0, blackK=S.board.indexOf('bK')>=0;
-    if(!whiteK||!blackK){
-      if(S.mode==='mp'){
-        var winner = !whiteK ? S.friendName : (S.mpName||'White');
-        set({over:true, overTitle:winner+' takes the crown.', overNote:'A duel settled. Rematch, or return to the Atlas.'});
+    var side=S.turn, opp=side==='w'?'b':'w';
+    var moves=legalAll(S.board,side,S.castling,S.ep);
+    var chk=inCheck(S.board,side);
+    if(moves.length===0){
+      if(chk){
+        playCheckmateSound();
+        if(S.mode==='mp'){
+          var whiteName = S.myColor==='w' ? (S.mpName||'You') : S.friendName;
+          var blackName = S.myColor==='w' ? S.friendName : (S.mpName||'You');
+          var winner = opp==='w' ? whiteName : blackName;
+          set({over:true, check:false, overTitle:winner+' delivers checkmate.', overNote:'A duel settled. Rematch, or return to the Atlas.'});
+        } else {
+          var youWon=(opp===S.side);
+          set({over:true, check:false,
+            overTitle:youWon?'Checkmate \u2014 the board is yours.':'Checkmate. Your king has fallen.',
+            overNote:youWon?'Decisive. Ready to march on a tougher theatre?':'Every commander loses ground learning. Run it back, or pick a gentler front.'});
+        }
       } else {
-        var youWon=(S.side==='w'&&!blackK)||(S.side==='b'&&!whiteK);
-        set({over:true,
-          overTitle:youWon?'You captured the king. The board is yours.':'Your king has fallen.',
-          overNote:youWon?'Decisive. Ready to march on a tougher theatre?':'Every commander loses ground learning. Run it back, or pick a gentler front.'});
+        playStalemateSound();
+        set({over:true, check:false, overTitle:'Stalemate \u2014 a draw.', overNote:'No legal move remains, yet the king stands. Play again whenever you like.'});
       }
+      return;
     }
+    if(chk && !S.check) playCheckSound();
+    if(chk!==S.check) set({check:chk});
   }
   function opponentMove(){
     if(S.over||S.mode!=='cpu') return;
     var opp=S.side==='w'?'b':'w';
     if(S.turn!==opp) return;
-    var moves=allMoves(S.board,opp);
-    if(!moves.length){ set({over:true,overTitle:'No moves remain \u2014 a stalemate.',overNote:'A peace by exhaustion. Play again whenever you like.'}); return; }
     var diff=city().diff;
     var depthMap={1:1,2:1,3:2,4:2,5:3};
     var blunder={1:0.5,2:0.28,3:0.1,4:0.03,5:0};
     var best;
-    if(Math.random()<(blunder[diff]||0)) best=moves[Math.floor(Math.random()*moves.length)];
-    else best=chooseAiMove(S.board,opp,depthMap[diff]||2)||moves[0];
-    var took=!!S.board[best[1]];
-    doMove(best[0],best[1],false);
+    var legal=legalAll(S.board,opp,S.castling,S.ep);
+    if(!legal.length) return;
+    if(Math.random()<(blunder[diff]||0)) best=legal[Math.floor(Math.random()*legal.length)];
+    else best=aiPick(S.board,opp,depthMap[diff]||2,S.castling,S.ep)||legal[0];
+    var took=!!S.board[best.to];
+    doMove(best.from,best.to,'cpu');
     var msg=took
       ? city().opp+' struck \u2014 you lost a piece. Look to win it back, or tap Hint.'
       : city().opp+' developed quietly. Your move \u2014 seize the centre.';
@@ -401,25 +602,25 @@
   }
   function hint(){
     if(S.over||S.turn!==S.side||S.mode!=='cpu') return;
-    var best=chooseAiMove(S.board,S.side,2);
+    var best=aiPick(S.board,S.side,2,S.castling,S.ep);
     if(!best) return;
-    var msg=S.board[best[1]]
+    var msg=S.board[best.to]
       ? 'The glowing piece wins material. Tap it, then the marked square.'
       : 'The glowing piece improves your position. Tap it, then the marked square.';
-    set({selected:best[0], legal:movesFor(S.board,best[0]), hintMove:best, coach:msg});
+    set({selected:best.from, legal:legalTargets(S.board,best.from,S.castling,S.ep), hintMove:[best.from,best.to], coach:msg});
   }
   function undo(){
     if(!S.history.length) return;
     var prev=S.history[S.history.length-1];
-    set({board:prev.board,captured:prev.captured,last:prev.last,log:prev.log,turn:prev.turn,gems:prev.gems,playerMoveCount:prev.playerMoveCount,firstCapture:prev.firstCapture,history:S.history.slice(0,-1),selected:null,legal:[],hintMove:null,over:false,coach:'Move recalled. No ground lost \u2014 try a different line.'});
+    set({board:prev.board,castling:prev.castling,ep:prev.ep,captured:prev.captured,last:prev.last,log:prev.log,review:prev.review||[],turn:prev.turn,gems:prev.gems,playerMoveCount:prev.playerMoveCount,firstCapture:prev.firstCapture,history:S.history.slice(0,-1),selected:null,legal:[],hintMove:null,over:false,check:false,coach:'Move recalled. No ground lost \u2014 try a different line.'});
   }
   function resetGame(){
     var intro = S.mode==='mp' ? '' : 'Theatre: '+city().name+'. You face '+city().opp+'. '+city().line;
-    set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],over:false,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:intro});
+    set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:intro});
     if(S.mode==='cpu'&&S.side==='b') setTimeout(opponentMove,700);
   }
   function startGame(){ set({screen:'game',mode:'cpu'}); resetGame(); }
-  function newGame(){ resetGame(); }
+  function newGame(){ if(S.online){ requestRematch(); } else { resetGame(); } }
 
   // ---------- multiplayer / codex ----------
   function openChallenge(){ set({challengeOpen:true, mpStep:'create', friendName:pick(FRIENDS), copyLabel:'Copy'}); }
@@ -427,29 +628,114 @@
   function createLink(){
     var nameEl=document.getElementById('mpName');
     var name=(nameEl&&nameEl.value||'').trim()||'Commander';
-    var id=Math.random().toString(36).slice(2,8).toUpperCase();
-    set({mpName:name, mpLink:'sovereignboard.app/c/'+id, mpStep:'wait'});
+    var db=getDb();
+    if(!db){ set({mpName:name, mpLink:roomUrl(makeRoomId()), mpStep:'wait'}); return; }
+    var id=makeRoomId(); roomId=id;
+    var initial={ players:{w:name}, theme:S.cityKey, status:'waiting', turn:'w', moves:{}, created:Date.now() };
+    db.ref('rooms/'+id).set(initial).then(function(){
+      set({mpName:name, myColor:'w', mpLink:roomUrl(id), mpStep:'wait', friendName:'your challenger'});
+      setupPresence('w');
+      watchJoin();
+    }).catch(function(){ set({mpName:name, mpLink:roomUrl(id), mpStep:'wait'}); });
+  }
+  function watchJoin(){
+    var db=getDb(); if(!db) return;
+    db.ref('rooms/'+roomId+'/players/b').on('value',function(snap){
+      var b=snap.val();
+      if(b && !S.online){ set({friendName:b}); enterOnline('w'); }
+    });
+  }
+  function submitJoin(){
+    var nameEl=document.getElementById('joinName');
+    var name=(nameEl&&nameEl.value||'').trim()||'Challenger';
+    var db=getDb(), id=pendingRoom;
+    if(!db||!id){ set({joinOpen:false}); return; }
+    db.ref('rooms/'+id).once('value').then(function(snap){
+      var data=snap.val();
+      if(!data){ alert('That challenge link has expired or was never created.'); set({joinOpen:false}); return; }
+      if(data.players && data.players.b){ alert('This board already has two commanders.'); set({joinOpen:false}); return; }
+      roomId=id;
+      db.ref('rooms/'+id+'/players/b').set(name);
+      db.ref('rooms/'+id+'/status').set('active');
+      var patch={mpName:name, myColor:'b', friendName:(data.players&&data.players.w)||'Host', joinOpen:false};
+      if(data.theme) patch.cityKey=data.theme;
+      set(patch);
+      setupPresence('b');
+      enterOnline('b');
+    }).catch(function(){ alert('Could not reach the board. Check your connection.'); set({joinOpen:false}); });
+  }
+  function enterOnline(color){
+    if(S.online) return;
+    set({challengeOpen:false, joinOpen:false, screen:'game', mode:'mp', online:true, myColor:color, chatOpen:false, chat:[]});
+    resetOnlineBoard();
+    listenMoves(); listenChat(); listenRematch();
+  }
+  function resetOnlineBoard(){
+    set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:''});
+  }
+  function setupPresence(color){
+    var db=getDb(); if(!db) return;
+    var mine=db.ref('rooms/'+roomId+'/presence/'+color);
+    mine.set(true); mine.onDisconnect().remove();
+    var opp=color==='w'?'b':'w';
+    db.ref('rooms/'+roomId+'/presence/'+opp).on('value',function(snap){ set({oppOnline:!!snap.val()}); });
+  }
+  function listenMoves(){
+    var db=getDb(); if(!db) return;
+    db.ref('rooms/'+roomId+'/moves').on('child_added',function(snap){
+      var mv=snap.val(); if(!mv) return;
+      if(mv.by===S.myColor) return;
+      if(S.over) return;
+      doMove(mv.from,mv.to,'remote');
+    });
+  }
+  function listenChat(){
+    var db=getDb(); if(!db) return;
+    db.ref('rooms/'+roomId+'/chat').on('child_added',function(snap){
+      var m=snap.val(); if(!m) return;
+      set({chat:S.chat.concat([{name:m.name,text:m.text}])});
+    });
+  }
+  function listenRematch(){
+    var db=getDb(); if(!db) return; var last=0;
+    db.ref('rooms/'+roomId+'/rematch').on('value',function(snap){
+      var v=snap.val(); if(v && v!==last){ last=v; resetOnlineBoard(); }
+    });
+  }
+  function requestRematch(){ try{ getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){} }
+  function leaveRoom(){
+    var db=getDb();
+    if(db && roomId){ try{ db.ref('rooms/'+roomId+'/presence/'+S.myColor).remove(); db.ref('rooms/'+roomId).off(); }catch(e){} }
+    roomId=null;
+  }
+  function demoJoin(){
+    set({challengeOpen:false, screen:'game', mode:'mp', online:false, chatOpen:false, chat:[{who:'them',text:'good luck \u2014 may the better doctrine win.'}]});
+    resetGame();
+  }
+  function doShare(){
+    if(navigator.share){ navigator.share({title:'Sovereign Board', text:'I challenge you to a game of Sovereign Board.', url:S.mpLink}).catch(function(){}); }
+    else { copyLink(); }
   }
   function copyLink(){
     try{ if(navigator.clipboard) navigator.clipboard.writeText(S.mpLink); }catch(e){}
     set({copyLabel:'Copied'});
     setTimeout(function(){ set({copyLabel:'Copy'}); },1600);
   }
-  function simulateJoin(){
-    set({challengeOpen:false, screen:'game', mode:'mp', chatOpen:false, chat:[{who:'them',text:'good luck \u2014 may the better doctrine win.'}]});
-    resetGame();
-  }
   function toggleChat(){ set({chatOpen:!S.chatOpen}); }
   function sendChat(){
     var el=document.getElementById('chatIn');
     var text=(el&&el.value||'').trim();
     if(!text) return;
-    set({chat:S.chat.concat([{who:'you',text:text}])});
-    setTimeout(function(){ set({chat:S.chat.concat([{who:'them',text:pick(THEM_REPLIES)}])}); },1100);
+    if(el) el.value='';
+    if(S.online){ try{ getDb().ref('rooms/'+roomId+'/chat').push({name:S.mpName,text:text,ts:Date.now()}); }catch(e){} }
+    else { set({chat:S.chat.concat([{who:'you',text:text}])}); setTimeout(function(){ set({chat:S.chat.concat([{who:'them',text:pick(THEM_REPLIES)}])}); },1100); }
   }
   function openCodex(){ set({codexOpen:true}); }
   function closeCodex(){ set({codexOpen:false}); }
-  function goHome(){ set({screen:'home',mode:'cpu',chatOpen:false}); }
+  function openReview(){ if(S.over) set({reviewOpen:true}); }
+  function closeReview(){ set({reviewOpen:false}); }
+  function closeJoin(){ set({joinOpen:false}); }
+  function goHome(){ if(S.online) leaveRoom(); set({screen:'home',mode:'cpu',online:false,oppOnline:false,chatOpen:false}); }
 
   // ---------- map ----------
   function buildMap(){
@@ -520,7 +806,7 @@
       '<div class="chips">'+chips+'</div>'+
       '<div class="card dossier">'+
         '<p class="kicker">'+esc(c.doctrine)+'</p>'+
-        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;"><h2>'+esc(c.name)+'</h2><span class="diff-pill">'+DIFF_LABELS[c.diff]+'</span></div>'+
+        '<div style="display:flex;align-items:baseline;justify-content:space-between;gap:10px;"><h2>'+esc(c.name)+'</h2><span class="diff-pill" aria-label="Difficulty '+c.diff+' of 5">'+difficultyKings(c.diff)+'</span></div>'+
         '<p class="line">'+esc(c.line)+'</p>'+
         '<div class="facts"><div class="fact"><span>Opponent</span><strong>'+esc(c.opp)+'</strong></div><div class="fact"><span>Doctrine</span><strong>'+esc(c.style)+'</strong></div></div>'+
         '<p class="sublabel">Your colours</p>'+
@@ -534,7 +820,7 @@
   function boardHTML(){
     var c=city();
     var order=[]; for(var i=0;i<64;i++) order.push(i);
-    var flip = S.mode==='cpu' && S.side==='b';
+    var flip = (S.mode==='cpu' && S.side==='b') || (S.mode==='mp' && S.online && S.myColor==='b');
     if(flip) order.reverse();
     var cells=order.map(function(i){
       var p=S.board[i], r=Math.floor(i/8), col=i%8, dark=(r+col)%2===1;
@@ -549,7 +835,7 @@
     var overlay='';
     if(S.over){
       overlay='<div class="over"><p class="tag">The board is settled</p><h2>'+esc(S.overTitle)+'</h2><p>'+esc(S.overNote)+'</p>'+
-        '<div class="over-row"><button class="btn-small" data-act="new">Rematch</button><button class="btn-small alt" data-act="home">Atlas</button></div></div>';
+        '<div class="over-row"><button class="btn-small" data-act="review">Review Game</button><button class="btn-small alt" data-act="new">Rematch</button><button class="btn-small alt" data-act="home">Atlas</button></div></div>';
     }
     return '<div class="board-wrap"><div class="board">'+cells+'</div>'+overlay+'</div>';
   }
@@ -562,12 +848,15 @@
     else if(isMp){ statusText=moverWord+' to move'; pillText=moverWord+' to move'; dotColor=c.accent; pillCls=' mp'; }
     else if(S.turn===S.side){ statusText='Your move'; pillText='Your move'; dotColor='#7bbf6a'; pillCls=' good'; }
     else { statusText=c.opp+' is thinking\u2026'; pillText='Thinking\u2026'; dotColor=c.accent; pillCls=''; }
+    if(S.check && !S.over){ statusText+=' \u00b7 Check!'; pillText+=' \u00b7 Check'; dotColor='#e0554a'; }
 
+    var mc = (isMp && S.online) ? S.myColor : 'w';
     var oppName=isMp?S.friendName:c.opp;
-    var oppSub=isMp?'online \u00b7 black crown':(c.name+' \u00b7 '+DIFF_LABELS[c.diff]);
-    var oppGlyph=isMp?'\u265A':'\u265F';
+    var oppSub=isMp?('online \u00b7 '+(mc==='w'?'black':'white')+' crown'):(c.name+' \u00b7 '+difficultyKingsText(c.diff));
+    var oppGlyph=isMp?(mc==='w'?'\u265A':'\u2654'):'\u265F';
+    var youGlyph=isMp?(mc==='w'?'\u2654':'\u265A'):'\u2654';
     var youName=isMp?(S.mpName||'You'):'You';
-    var youSub=isMp?'White crown':(S.side==='w'?'Playing White':'Playing Black');
+    var youSub=isMp?(mc==='w'?'White crown':'Black crown'):(S.side==='w'?'Playing White':'Playing Black');
 
     var topStrip='<div class="strip">'+
       '<button class="iconbtn" data-act="home">\u2039</button>'+
@@ -578,7 +867,7 @@
 
     var youCaps=S.captured.w.map(function(g){ return '<span>'+g+'</span>'; }).join('');
     var youStrip='<div class="strip">'+
-      '<div class="avatar you">\u2654</div>'+
+      '<div class="avatar you">'+youGlyph+'</div>'+
       '<div class="who"><span class="nm">'+esc(youName)+'</span><span class="sub">'+esc(youSub)+'</span></div>'+
       '<div class="cap-tray">'+youCaps+'</div>'+
     '</div>';
@@ -588,7 +877,10 @@
       mid='<div class="panel"><div class="panel-head"><span class="dot-s" style="background:'+dotColor+';"></span><span class="st">'+esc(statusText)+'</span><span class="coach-tag">'+esc(c.opp)+' \u00b7 coach</span></div>'+
         '<p class="coach-msg">'+esc(S.coach||('Theatre: '+c.name+'. You face '+c.opp+'.'))+'</p></div>';
     } else {
-      mid='<div class="panel" style="display:flex;align-items:center;gap:9px;padding:12px 15px;"><span class="dot-s" style="background:'+dotColor+';"></span><span class="st">'+esc(statusText)+'</span><span class="live-tag"><span class="d"></span>Live \u00b7 '+esc(S.friendName)+'</span></div>';
+      var liveOn = !S.online || S.oppOnline;
+      var liveTxt = (S.online ? (S.oppOnline?'Live':'Waiting') : 'Live')+' \u00b7 '+esc(S.friendName);
+      var liveDot = liveOn?'#7bbf6a':'#6f6a5c';
+      mid='<div class="panel" style="display:flex;align-items:center;gap:9px;padding:12px 15px;"><span class="dot-s" style="background:'+dotColor+';"></span><span class="st">'+esc(statusText)+'</span><span class="live-tag" style="color:'+liveDot+';"><span class="d" style="background:'+liveDot+';"></span>'+liveTxt+'</span></div>';
     }
 
     var codexInner;
@@ -602,7 +894,7 @@
 
     var chatBlock='';
     if(isMp && S.chatOpen){
-      var msgs=S.chat.map(function(m){ return '<div class="chat-row '+(m.who==='you'?'you':'them')+'"><span class="bubble">'+esc(m.text)+'</span></div>'; }).join('');
+      var msgs=S.chat.map(function(m){ var who = m.who || (m.name===S.mpName?'you':'them'); return '<div class="chat-row '+(who==='you'?'you':'them')+'"><span class="bubble">'+esc(m.text)+'</span></div>'; }).join('');
       chatBlock='<div class="chatbox"><div class="chat-msgs" id="chatMsgs">'+msgs+'</div>'+
         '<div class="chat-input"><input id="chatIn" placeholder="Message '+esc(S.friendName)+'\u2026"><button data-act="send">Send</button></div></div>';
     }
@@ -636,6 +928,27 @@
       '<div class="sheet-body">'+items+'</div></div></div>';
   }
 
+  function reviewSheetHTML(){
+    if(!S.reviewOpen) return '';
+    var c=city();
+    var captures=S.review.filter(function(m){ return m.capture; }).length;
+    var moves=S.review.length ? S.review.map(function(m,i){
+      return '<div class="review-move"><span class="n">'+(i+1)+'</span><div><span class="m">'+esc(m.notation)+'</span><span class="by">'+esc(m.actor)+(m.capture?' \u00b7 capture':'')+'</span></div></div>';
+    }).join('') : '<div class="gem"><span class="b">No moves were recorded for this game.</span></div>';
+    return '<div class="overlay" data-act="closeReviewBg"><div class="sheet" data-stop="1">'+
+      '<div class="sheet-head bd"><div><p class="sk">After Action Report</p><h2>Review Game</h2><p class="note">'+esc(resultText())+'</p></div><button class="closex" data-act="closeReview">\u2715</button></div>'+
+      '<div class="sheet-body">'+
+        '<div class="review-grid">'+
+          '<div class="review-stat"><span>Theatre</span><strong>'+esc(c.name)+'</strong></div>'+
+          '<div class="review-stat"><span>Opponent</span><strong>'+esc(S.mode==='mp'?S.friendName:c.opp)+'</strong></div>'+
+          '<div class="review-stat"><span>Difficulty</span><strong>'+difficultyKingsText(c.diff)+'</strong></div>'+
+          '<div class="review-stat"><span>Captures</span><strong>'+captures+'</strong></div>'+
+        '</div>'+
+        '<p class="sublabel">Move timeline</p>'+
+        '<div class="review-list">'+moves+'</div>'+
+      '</div></div></div>';
+  }
+
   function challengeSheetHTML(){
     if(!S.challengeOpen) return '';
     var body;
@@ -644,21 +957,32 @@
         '<p class="sublabel">Your name</p><input class="field" id="mpName" placeholder="Commander\u2026" maxlength="20" value="'+esc(S.mpName)+'">'+
         '<button class="btn-primary" data-act="createLink">Create challenge link</button></div>';
     } else {
-      body='<div class="step"><p class="d">Link forged. Share it with your challenger.</p>'+
+      body='<div class="step"><p class="d">Link forged. Share it with your challenger \u2014 whoever opens it commands Black.</p>'+
         '<div class="linkrow"><input readonly value="'+esc(S.mpLink)+'"><button data-act="copyLink">'+S.copyLabel+'</button></div>'+
-        '<div class="waiting"><span class="d"></span><span>Waiting for your challenger\u2026</span></div>'+
-        '<button class="btn-primary" data-act="simJoin">\u25b6 '+esc(S.friendName)+' opened the link</button>'+
-        '<p class="fineprint">In the live app this fires when they tap your link.</p></div>';
+        '<button class="btn-ghost" data-act="share" style="margin-top:0;"><span class="ic">\u21ea</span>Share link</button>'+
+        '<div class="waiting"><span class="d"></span><span>Waiting for your challenger to join\u2026</span></div>'+
+        '<p class="fineprint">The board goes live the instant they open your link.</p>'+
+        (firebaseReady()?'':'<button class="btn-primary" data-act="demoJoin" style="margin-top:8px;">\u25b6 Enter offline demo</button>')+
+        '</div>';
     }
     return '<div class="overlay" data-act="closeChalBg"><div class="sheet" data-stop="1">'+
       '<div class="sheet-head"><div><p class="sk">Sortie</p><h2>Challenge a friend</h2></div><button class="closex" data-act="closeChallenge">\u2715</button></div>'+
       body+'</div></div>';
   }
 
+  function joinSheetHTML(){
+    if(!S.joinOpen) return '';
+    return '<div class="overlay"><div class="sheet" data-stop="1">'+
+      '<div class="sheet-head"><div><p class="sk">Incoming challenge</p><h2>Join the board</h2></div><button class="closex" data-act="closeJoin">\u2715</button></div>'+
+      '<div class="step"><p class="d">You\u2019ve been challenged. Enter your name to take Black and begin.</p>'+
+      '<p class="sublabel">Your name</p><input class="field" id="joinName" placeholder="Challenger\u2026" maxlength="20">'+
+      '<button class="btn-primary" data-act="submitJoin">Join the board</button></div></div></div>';
+  }
+
   function render(){
     applyTheme();
     var html = S.screen==='home' ? homeHTML() : gameHTML();
-    html += codexSheetHTML() + challengeSheetHTML();
+    html += codexSheetHTML() + reviewSheetHTML() + challengeSheetHTML() + joinSheetHTML();
     document.getElementById('app').innerHTML = html;
   }
 
@@ -678,6 +1002,9 @@
       case 'undo': undo(); break;
       case 'new': newGame(); break;
       case 'home': goHome(); break;
+      case 'review': openReview(); break;
+      case 'closeReview': closeReview(); break;
+      case 'closeReviewBg': closeReview(); break;
       case 'openCodex': openCodex(); break;
       case 'closeCodex': closeCodex(); break;
       case 'closeCodexBg': closeCodex(); break;
@@ -685,7 +1012,10 @@
       case 'closeChalBg': closeChallenge(); break;
       case 'createLink': createLink(); break;
       case 'copyLink': copyLink(); break;
-      case 'simJoin': simulateJoin(); break;
+      case 'share': doShare(); break;
+      case 'demoJoin': demoJoin(); break;
+      case 'submitJoin': submitJoin(); break;
+      case 'closeJoin': closeJoin(); break;
       case 'chat': toggleChat(); break;
       case 'send': sendChat(); break;
     }
@@ -696,6 +1026,8 @@
   });
 
   // ---------- boot ----------
+  var roomMatch = location.search.match(/[?&]room=([A-Za-z0-9]+)/);
+  if(roomMatch){ pendingRoom = roomMatch[1]; S.joinOpen = true; }
   render();
   buildMap();
 })();
