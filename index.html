@@ -143,14 +143,18 @@
   .codex .gt{display:block; font-family:'Playfair Display',serif; font-size:15px; color:var(--text); margin-bottom:3px;}
   .codex .gb{display:block; font-size:12.5px; line-height:1.5; color:var(--dim);}
   .codex .empty{font-size:12.5px; line-height:1.5; color:#6f6a5c; font-style:italic;}
-  .chatbox{border:1px solid var(--border); border-radius:10px; background:var(--panel); overflow:hidden;}
-  .chat-msgs{display:flex; flex-direction:column; gap:8px; padding:13px 14px; max-height:150px; overflow-y:auto;}
+  .chatbox{
+    position:fixed; left:50%; bottom:calc(112px + env(safe-area-inset-bottom)); transform:translateX(-50%);
+    z-index:35; width:min(440px,calc(100vw - 24px)); border:1px solid var(--border); border-radius:14px;
+    background:rgba(17,21,29,.97); overflow:hidden; box-shadow:0 18px 50px rgba(0,0,0,.42);
+  }
+  .chat-msgs{display:flex; flex-direction:column; gap:8px; padding:13px 14px; max-height:118px; overflow-y:auto; overscroll-behavior:contain;}
   .chat-row{display:flex;}
   .chat-row.you{justify-content:flex-end;}
   .bubble{max-width:80%; font-size:13px; line-height:1.4; padding:8px 11px; border-radius:12px; background:#1a1f29; color:var(--text); border-bottom-left-radius:3px;}
   .chat-row.you .bubble{background:var(--accent); color:#0b0e14; border-bottom-left-radius:12px; border-bottom-right-radius:3px;}
   .chat-input{display:flex; border-top:1px solid var(--border);}
-  .chat-input input{flex:1; background:transparent; border:none; color:var(--text); font-family:'Inter',sans-serif; font-size:13px; padding:11px 13px; outline:none;}
+  .chat-input input{flex:1; min-width:0; background:transparent; border:none; color:var(--text); -webkit-text-fill-color:var(--text); caret-color:var(--accent); font-family:'Inter',sans-serif; font-size:16px; padding:12px 13px; outline:none;}
   .chat-input button{background:transparent; border:none; border-left:1px solid var(--border); color:var(--accent); font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:0 15px; cursor:pointer;}
   .actions{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
   .act{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; display:flex; flex-direction:column; align-items:center; gap:4px; padding:11px; border-radius:10px; cursor:pointer; border:1px solid var(--border); background:var(--panel); color:var(--dim);}
@@ -315,7 +319,7 @@
     gems:[], playerMoveCount:0, firstCapture:false,
     codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
-    chat:[], chatOpen:false,
+    chat:[], chatOpen:false, chatDraft:'',
     online:false, myColor:'w', oppOnline:false, joinOpen:false
   };
   var projection = null, mapPaths = null;
@@ -919,11 +923,16 @@
     setTimeout(function(){ set({copyLabel:'Copy'}); },1600);
   }
   function toggleChat(){ set({chatOpen:!S.chatOpen}); }
+  function settleChatPanel(){
+    var box=document.getElementById('chatMsgs');
+    if(box) box.scrollTop=box.scrollHeight;
+  }
   function sendChat(){
     var el=document.getElementById('chatIn');
     var text=(el&&el.value||'').trim();
     if(!text) return;
     if(el) el.value='';
+    S.chatDraft='';
     if(S.online){ try{ getDb().ref('rooms/'+roomId+'/chat').push({name:S.mpName,text:text,ts:Date.now()}); }catch(e){} }
     else { set({chat:S.chat.concat([{who:'you',text:text}])}); setTimeout(function(){ set({chat:S.chat.concat([{who:'them',text:pick(THEM_REPLIES)}])}); },1100); }
   }
@@ -1093,7 +1102,7 @@
     if(isMp && S.chatOpen){
       var msgs=S.chat.map(function(m){ var who = m.who || (m.name===S.mpName?'you':'them'); return '<div class="chat-row '+(who==='you'?'you':'them')+'"><span class="bubble">'+esc(m.text)+'</span></div>'; }).join('');
       chatBlock='<div class="chatbox"><div class="chat-msgs" id="chatMsgs">'+msgs+'</div>'+
-        '<div class="chat-input"><input id="chatIn" placeholder="Message '+esc(S.friendName)+'\u2026"><button data-act="send">Send</button></div></div>';
+        '<div class="chat-input"><input id="chatIn" placeholder="Message '+esc(S.friendName)+'\u2026" value="'+esc(S.chatDraft)+'"><button data-act="send">Send</button></div></div>';
     }
 
     var primary;
@@ -1239,6 +1248,7 @@
     var html = S.screen==='home' ? homeHTML() : gameHTML();
     html += codexSheetHTML() + reviewSheetHTML() + challengeSheetHTML() + joinSheetHTML();
     document.getElementById('app').innerHTML = html;
+    if(S.chatOpen) setTimeout(settleChatPanel,0);
   }
 
   // ---------- events ----------
@@ -1279,6 +1289,7 @@
   });
   document.addEventListener('input', function(e){
     if(e.target && e.target.id==='mpName') S.mpName=e.target.value;
+    if(e.target && e.target.id==='chatIn') S.chatDraft=e.target.value;
   });
   document.addEventListener('keydown', function(e){
     if(e.target && e.target.id==='mpName' && e.key==='Enter'){ e.preventDefault(); createLink(); }
