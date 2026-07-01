@@ -35,6 +35,14 @@
     -webkit-font-smoothing:antialiased;
     overscroll-behavior:none;
   }
+  body.chat-lock{
+    position:fixed;
+    left:0;
+    right:0;
+    top:var(--chat-lock-top,0px);
+    width:100%;
+    overflow:hidden;
+  }
   .stage{
     max-width:480px; margin:0 auto;
     min-height:100vh;
@@ -148,6 +156,7 @@
     z-index:35; width:min(440px,calc(100vw - 24px)); border:1px solid var(--border); border-radius:14px;
     background:rgba(17,21,29,.97); overflow:hidden; box-shadow:0 18px 50px rgba(0,0,0,.42);
   }
+  body.chat-lock .chatbox{bottom:calc(max(16px,var(--chat-keyboard,0px) + 16px) + env(safe-area-inset-bottom));}
   .chat-msgs{display:flex; flex-direction:column; gap:8px; padding:13px 14px; max-height:118px; overflow-y:auto; overscroll-behavior:contain;}
   .chat-row{display:flex;}
   .chat-row.you{justify-content:flex-end;}
@@ -323,6 +332,7 @@
     online:false, myColor:'w', oppOnline:false, joinOpen:false
   };
   var projection = null, mapPaths = null;
+  var chatLockScroll = 0;
 
   // ---------- firebase ----------
   var FIREBASE_CONFIG = {
@@ -922,10 +932,32 @@
     set({copyLabel:'Copied'});
     setTimeout(function(){ set({copyLabel:'Copy'}); },1600);
   }
-  function toggleChat(){ set({chatOpen:!S.chatOpen}); }
+  function toggleChat(){
+    if(S.chatOpen) unlockChatViewport();
+    set({chatOpen:!S.chatOpen});
+  }
   function settleChatPanel(){
     var box=document.getElementById('chatMsgs');
     if(box) box.scrollTop=box.scrollHeight;
+  }
+  function updateChatKeyboardOffset(){
+    var vv=window.visualViewport;
+    var keyboard=vv ? Math.max(0, window.innerHeight - vv.height - vv.offsetTop) : 0;
+    document.documentElement.style.setProperty('--chat-keyboard', keyboard+'px');
+  }
+  function lockChatViewport(){
+    if(document.body.classList.contains('chat-lock')) return;
+    chatLockScroll=window.scrollY||document.documentElement.scrollTop||0;
+    document.documentElement.style.setProperty('--chat-lock-top', (-chatLockScroll)+'px');
+    updateChatKeyboardOffset();
+    document.body.classList.add('chat-lock');
+  }
+  function unlockChatViewport(){
+    if(!document.body.classList.contains('chat-lock')) return;
+    document.body.classList.remove('chat-lock');
+    document.documentElement.style.removeProperty('--chat-lock-top');
+    document.documentElement.style.removeProperty('--chat-keyboard');
+    window.scrollTo(0,chatLockScroll);
   }
   function sendChat(){
     var el=document.getElementById('chatIn');
@@ -1291,11 +1323,21 @@
     if(e.target && e.target.id==='mpName') S.mpName=e.target.value;
     if(e.target && e.target.id==='chatIn') S.chatDraft=e.target.value;
   });
+  document.addEventListener('focusin', function(e){
+    if(e.target && e.target.id==='chatIn') lockChatViewport();
+  });
+  document.addEventListener('focusout', function(e){
+    if(e.target && e.target.id==='chatIn') setTimeout(unlockChatViewport,80);
+  });
   document.addEventListener('keydown', function(e){
     if(e.target && e.target.id==='mpName' && e.key==='Enter'){ e.preventDefault(); createLink(); }
     if(e.target && e.target.id==='joinName' && e.key==='Enter'){ e.preventDefault(); submitJoin(); }
     if(e.target && e.target.id==='chatIn' && e.key==='Enter'){ e.preventDefault(); sendChat(); }
   });
+  if(window.visualViewport){
+    window.visualViewport.addEventListener('resize', function(){ if(document.body.classList.contains('chat-lock')) updateChatKeyboardOffset(); });
+    window.visualViewport.addEventListener('scroll', function(){ if(document.body.classList.contains('chat-lock')) updateChatKeyboardOffset(); });
+  }
 
   // ---------- boot ----------
   var roomMatch = location.search.match(/[?&]room=([A-Za-z0-9]+)/);
