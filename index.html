@@ -1245,6 +1245,8 @@
   document.addEventListener('click', function(e){
     var el=e.target.closest('[data-act]');
     if(!el) return;
+    var stop=e.target.closest('[data-stop]');
+    if(stop && !stop.contains(el)) return;
     var act=el.getAttribute('data-act');
     switch(act){
       case 'chip': set({cityKey:el.getAttribute('data-key')}); break;
