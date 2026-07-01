@@ -2018,7 +2018,8 @@ const PST = {
 // AI search depth per location persona - higher = stronger but slower
 const AI_DEPTH = { cairo:2, wallstreet:2, lagos:1, tokyo:3, havana:2, meroe:4, delhi:3, rome:2, london:2, persia:3 };
 const MATE_SCORE = 100000;
-const ENDGAME_SEARCH_DEPTH = 5;
+const ENDGAME_SEARCH_DEPTH = 7;
+const ENDGAME_FORCED_MATE_DEPTH = 8;
 const OPENING_BOOK = {
   cairo:{
     w:[
@@ -2419,6 +2420,66 @@ function getBestMoveForAI(bd, color, depth){
   return bestMoves[Math.floor(Math.random()*bestMoves.length)];
 }
 
+function endgameRootScore(bd,color,move){
+  const newBoard = applyMoveSim(bd, move);
+  const hunted = otherColor(color);
+  const replies = allLegalMoves(newBoard, hunted, {ep:null, skipCastle:true});
+  if(replies.length===0 && isInCheck(newBoard,hunted)) return MATE_SCORE;
+
+  const huntedKing = findKing(newBoard,hunted);
+  const hunterKing = findKing(newBoard,color);
+  if(!huntedKing || !hunterKing) return 0;
+
+  const edgeDistance = Math.min(huntedKing[0],7-huntedKing[0],huntedKing[1],7-huntedKing[1]);
+  const cornerDistance = Math.min(
+    huntedKing[0]+huntedKing[1],
+    huntedKing[0]+(7-huntedKing[1]),
+    (7-huntedKing[0])+huntedKing[1],
+    (7-huntedKing[0])+(7-huntedKing[1])
+  );
+  const kingDistance = Math.abs(huntedKing[0]-hunterKing[0]) + Math.abs(huntedKing[1]-hunterKing[1]);
+  const material = color==='w' ? evaluateBoard(newBoard) : -evaluateBoard(newBoard);
+  const moveKind = move.piece==='k' ? 24 : (move.piece==='p' ? 16 : 8);
+  const promotionPush = move.piece==='p' ? passedPawnProgressScore(newBoard,color) : 0;
+
+  return material +
+    (8-Math.min(8,replies.length))*110 +
+    (3-edgeDistance)*90 +
+    (14-cornerDistance)*28 +
+    (14-kingDistance)*24 +
+    (isInCheck(newBoard,hunted) ? 180 : 0) +
+    promotionPush +
+    moveKind;
+}
+
+function getEndgameMateMove(bd,color){
+  const moves = allLegalMoves(bd, color);
+  if(!moves.length) return null;
+
+  for(const m of moves){
+    const newBoard = applyMoveSim(bd, m);
+    const replies = allLegalMoves(newBoard, otherColor(color), {ep:null, skipCastle:true});
+    if(replies.length===0 && isInCheck(newBoard,otherColor(color))) return m;
+  }
+
+  for(let depth=3; depth<=ENDGAME_FORCED_MATE_DEPTH; depth+=2){
+    let best = null, bestScore = -Infinity;
+    for(const m of moves){
+      const newBoard = applyMoveSim(bd, m);
+      const score = -negamax(newBoard, depth-1, -Infinity, Infinity, otherColor(color));
+      if(score > bestScore){
+        bestScore = score;
+        best = m;
+      }
+    }
+    if(best && bestScore > MATE_SCORE - 1000) return best;
+  }
+
+  return moves
+    .map(move=>({move, score:endgameRootScore(bd,color,move)}))
+    .sort((a,b)=>b.score-a.score)[0].move;
+}
+
 function shouldFlipBoard(){
   return localPlayerColor()==='b';
 }
@@ -2795,10 +2856,9 @@ function aiMove(){
     makeMove(bookMove.from, bookMove.to, cpuColor, meta);
     return;
   }
-  const depth = isFinishingEndgame(board,cpuColor)
-    ? Math.max(AI_DEPTH[currentTheme] || 2, ENDGAME_SEARCH_DEPTH)
-    : (AI_DEPTH[currentTheme] || 2);
-  const move = getBestMoveForAI(board, cpuColor, depth);
+  const finishing = isFinishingEndgame(board,cpuColor);
+  const depth = finishing ? Math.max(AI_DEPTH[currentTheme] || 2, ENDGAME_SEARCH_DEPTH) : (AI_DEPTH[currentTheme] || 2);
+  const move = finishing ? getEndgameMateMove(board, cpuColor) : getBestMoveForAI(board, cpuColor, depth);
   if(!move) return;
   makeMove(move.from, move.to, cpuColor, move.meta);
 }
