@@ -90,7 +90,7 @@
   .turn-pill.mp{border-color:var(--accent); background:var(--accent-soft); color:var(--accent);}
   .dot-s{width:7px; height:7px; border-radius:50%; flex-shrink:0;}
   .cap-tray{margin-left:auto; display:flex; gap:2px; align-items:center; min-height:20px; flex-wrap:wrap; justify-content:flex-end; max-width:130px;}
-  .cap-tray span{font-size:15px; line-height:1; color:var(--accent);}
+  .cap-tray span{font-size:15px; line-height:1; color:var(--accent); font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; font-variant-emoji:text;}
   .board-wrap{position:relative; border:1px solid var(--border); border-radius:10px; overflow:hidden; padding:6px; background:var(--panel);}
   .board{display:grid; grid-template-columns:repeat(8,1fr); border-radius:5px; overflow:hidden;}
   .sq{position:relative; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; border:none; cursor:pointer; padding:0;}
@@ -98,7 +98,7 @@
   .sq.dark{background:var(--dark);}
   .sq.sel{box-shadow:inset 0 0 0 3px var(--accent);}
   .sq.last{background-image:linear-gradient(var(--accent-soft),var(--accent-soft));}
-  .pc{pointer-events:none; line-height:1; font-size:clamp(22px,9vw,40px);}
+  .pc{pointer-events:none; line-height:1; font-size:clamp(22px,9vw,40px); font-family:"DejaVu Sans","Segoe UI Symbol","Noto Sans Symbols 2","Apple Symbols",sans-serif; font-variant-emoji:text;}
   .pc.w{color:#fbf7ec; text-shadow:-1px -1px 0 #1c150d,1px -1px 0 #1c150d,-1px 1px 0 #1c150d,1px 1px 0 #1c150d,0 2px 3px rgba(0,0,0,.5);}
   .pc.b{color:var(--accent); text-shadow:-1px -1px 0 #0a0806,1px -1px 0 #0a0806,-1px 1px 0 #0a0806,1px 1px 0 #0a0806,0 2px 3px rgba(0,0,0,.55);}
   .dot{display:none; position:absolute; pointer-events:none;}
@@ -169,11 +169,17 @@
   .review-stat{border:1px solid var(--border); border-radius:10px; background:#0d1117; padding:12px;}
   .review-stat span{display:block; font-family:'Space Mono',monospace; font-size:8px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin-bottom:4px;}
   .review-stat strong{font-family:'Space Mono',monospace; font-size:12px; color:var(--text); font-weight:400;}
+  .review-notes{display:grid; gap:8px; margin-bottom:14px;}
+  .review-note{border:1px solid var(--border); border-left-color:var(--accent); border-radius:10px; background:#0d1117; padding:11px 12px;}
+  .review-note b{display:block; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent); margin-bottom:5px;}
+  .review-note span{display:block; font-size:12.5px; line-height:1.45; color:var(--dim);}
   .review-list{display:grid; gap:8px;}
   .review-move{border:1px solid var(--border); border-radius:10px; background:#0d1117; padding:10px 12px; display:grid; grid-template-columns:auto 1fr; gap:8px; align-items:start;}
   .review-move .n{font-family:'Space Mono',monospace; font-size:10px; color:var(--accent);}
   .review-move .m{font-family:'Space Mono',monospace; font-size:12px; color:var(--text);}
   .review-move .by{display:block; margin-top:2px; font-size:11px; color:var(--dim);}
+  .review-move .learn{display:block; margin-top:5px; font-size:11.5px; line-height:1.4; color:#b9b19e;}
+  .review-tag{display:inline-flex; margin-left:6px; border:1px solid var(--border); border-radius:999px; padding:1px 6px; font-family:'Space Mono',monospace; font-size:8px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent);}
   .step{padding:8px 20px 26px;}
   .step p.d{font-size:13px; line-height:1.5; color:var(--dim); margin:0 0 16px;}
   .field{width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); font-family:'Inter',sans-serif; font-size:15px; padding:12px 13px; border-radius:9px; outline:none; margin-bottom:16px;}
@@ -319,6 +325,11 @@
 
   function set(patch, cb){ for(var k in patch) S[k]=patch[k]; render(); if(cb) cb(); }
   function city(){ for(var i=0;i<CITIES.length;i++){ if(CITIES[i].key===S.cityKey) return CITIES[i]; } return CITIES[0]; }
+  function pieceGlyph(type){ return (GLYPH[type]||'')+'\uFE0E'; }
+  function pieceName(type){
+    return ({P:'pawn',N:'knight',B:'bishop',R:'rook',Q:'queen',K:'king'})[type] || 'piece';
+  }
+  function pieceValue(type){ return ({P:1,N:3,B:3,R:5,Q:9,K:0})[type] || 0; }
   function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function difficultyKings(diff){
@@ -611,17 +622,18 @@
   }
   function notation(board,from,to){
     var p=board[from],fr=Math.floor(from/8),fc=from%8,tr=Math.floor(to/8),tc=to%8;
-    return GLYPH[p[1]]+FILES[fc]+(8-fr)+(board[to]?'x':'\u2013')+FILES[tc]+(8-tr);
+    return pieceGlyph(p[1])+FILES[fc]+(8-fr)+(board[to]?'x':'\u2013')+FILES[tc]+(8-tr);
   }
   function doMove(from,to,source){
     var byHuman = source==='human';
+    var movingPiece=S.board[from];
     var meta=deriveMeta(S.board,from,to);
     var res=applyFull(S.board,meta,S.castling,S.ep);
     var board=res.board, taken=res.captured;
     var captured={w:S.captured.w.slice(),b:S.captured.b.slice()};
-    if(taken){ captured[taken[0]].push(GLYPH[taken[1]]); }
+    if(taken){ captured[taken[0]].push(pieceGlyph(taken[1])); }
     var fr=Math.floor(from/8),fc=from%8,tr2=Math.floor(to/8),tc=to%8;
-    var note = meta.castle ? (meta.castle==='K'?'O-O':'O-O-O') : (GLYPH[S.board[from][1]]+FILES[fc]+(8-fr)+(taken?'x':'\u2013')+FILES[tc]+(8-tr2));
+    var note = meta.castle ? (meta.castle==='K'?'O-O':'O-O-O') : (pieceGlyph(movingPiece[1])+FILES[fc]+(8-fr)+(taken?'x':'\u2013')+FILES[tc]+(8-tr2));
     var history=S.history.concat([{board:S.board,castling:S.castling,ep:S.ep,captured:S.captured,last:S.last,log:S.log,review:S.review,turn:S.turn,gems:S.gems,playerMoveCount:S.playerMoveCount,firstCapture:S.firstCapture}]);
     var logThis = byHuman || S.mode==='mp';
     var log = logThis ? S.log.concat([(S.log.length+1)+'. '+note]) : S.log;
@@ -630,7 +642,7 @@
       : (S.turn===S.side ? 'You' : city().opp);
     var openingName=pendingOpeningName;
     pendingOpeningName='';
-    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn, opening:openingName}]);
+    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn, opening:openingName, piece:movingPiece[1], captured:taken?taken[1]:'', from:from, to:to}]);
     var coach=S.coach;
     if(byHuman && S.mode==='cpu') coach = taken ? pick(CAPTURE_TIPS) : pick(PLAYER_TIPS);
     var pmc = byHuman ? S.playerMoveCount+1 : S.playerMoveCount;
@@ -930,7 +942,7 @@
       if(S.last&&(S.last.from===i||S.last.to===i)) cls+=' last';
       var isLegal=S.legal.indexOf(i)>=0, isCap=isLegal&&p;
       if(isLegal) cls+=' legal'; if(isCap) cls+=' cap';
-      var pcHtml = p ? '<span class="pc '+p[0]+'">'+GLYPH[p[1]]+'</span>' : '';
+      var pcHtml = p ? '<span class="pc '+p[0]+'">'+pieceGlyph(p[1])+'</span>' : '';
       return '<button class="'+cls+'" data-act="cell" data-idx="'+i+'">'+pcHtml+'<span class="dot"></span></button>';
     }).join('');
     var overlay='';
@@ -1029,12 +1041,68 @@
       '<div class="sheet-body">'+items+'</div></div></div>';
   }
 
+  function reviewTag(m){
+    if(m.opening) return 'Book';
+    if(m.capture) return 'Tactic';
+    if(m.piece==='K') return 'King';
+    if(m.piece==='N' || m.piece==='B') return 'Develop';
+    if(m.piece==='P') return 'Structure';
+    return 'Plan';
+  }
+  function reviewLine(m){
+    if(m.opening) return 'Known opening idea: develop with a plan before chasing quick material.';
+    if(m.capture){
+      var cap=pieceName(m.captured), val=pieceValue(m.captured);
+      if(val>=5) return 'Major swing: winning a '+cap+' can decide the game if the lead is protected.';
+      if(val>=3) return 'Useful tactic: a '+cap+' came off, so check whether the recapture was forced.';
+      return 'Small material gain: pawns matter when they become passed or open files.';
+    }
+    if(m.piece==='N' || m.piece==='B') return 'Development move: active minor pieces make future attacks easier to find.';
+    if(m.piece==='P') return 'Structure move: every pawn push creates space and also leaves squares behind.';
+    if(m.piece==='Q') return 'Queen move: powerful, but make sure she is creating a real threat.';
+    if(m.piece==='R') return 'Rook move: look for open files and pressure on the back rank.';
+    if(m.piece==='K') return 'King move: king safety and endgame activity decide different phases.';
+    return 'Keep checking threats, captures, and forcing moves before settling.';
+  }
+  function reviewInsights(){
+    if(!S.review.length) return '<div class="review-note"><b>No Record</b><span>No moves were recorded for this game.</span></div>';
+    var book=null, firstCapture=null, biggest=null, youWin=null, opponentWin=null;
+    S.review.forEach(function(m,i){
+      if(!book && m.opening) book={m:m,i:i};
+      if(m.capture){
+        var entry={m:m,i:i,val:pieceValue(m.captured)};
+        if(!firstCapture) firstCapture=entry;
+        if(!biggest || entry.val>biggest.val) biggest=entry;
+        if(m.actor==='You' && (!youWin || entry.val>youWin.val)) youWin=entry;
+        if(m.actor!=='You' && (!opponentWin || entry.val>opponentWin.val)) opponentWin=entry;
+      }
+    });
+    var notes=[];
+    if(book){
+      notes.push({t:'Opening Plan',b:'Move '+(book.i+1)+' followed '+book.m.opening+'. The lesson is to recognize the setup, not memorize one exact line.'});
+    } else {
+      notes.push({t:'Opening Plan',b:'No book line stayed on the board for long. That means development, centre control, and king safety matter more than names.'});
+    }
+    if(biggest){
+      notes.push({t:'Turning Point',b:'Move '+(biggest.i+1)+' was the biggest material swing: '+biggest.m.actor+' took a '+pieceName(biggest.m.captured)+'. After moments like this, trade when ahead and complicate when behind.'});
+    } else {
+      notes.push({t:'Turning Point',b:'There was no major capture swing. The game was decided more by position: space, activity, and king safety.'});
+    }
+    if(opponentWin){
+      notes.push({t:'Blunder Check',b:'The sharpest warning came on move '+(opponentWin.i+1)+', when '+opponentWin.m.actor+' won a '+pieceName(opponentWin.m.captured)+'. Before each move, scan enemy captures and checks first.'});
+    } else if(youWin){
+      notes.push({t:'Great Move',b:'Your cleanest strike was move '+(youWin.i+1)+', winning a '+pieceName(youWin.m.captured)+'. The next skill is converting without giving counterplay.'});
+    } else {
+      notes.push({t:'Practice Focus',b:'Next game, try creating one clear target: an undefended piece, a weak pawn, or pressure near the king.'});
+    }
+    return notes.map(function(n){ return '<div class="review-note"><b>'+esc(n.t)+'</b><span>'+esc(n.b)+'</span></div>'; }).join('');
+  }
   function reviewSheetHTML(){
     if(!S.reviewOpen) return '';
     var c=city();
     var captures=S.review.filter(function(m){ return m.capture; }).length;
     var moves=S.review.length ? S.review.map(function(m,i){
-      return '<div class="review-move"><span class="n">'+(i+1)+'</span><div><span class="m">'+esc(m.notation)+'</span><span class="by">'+esc(m.actor)+(m.opening?' \u00b7 '+esc(m.opening):'')+(m.capture?' \u00b7 capture':'')+'</span></div></div>';
+      return '<div class="review-move"><span class="n">'+(i+1)+'</span><div><span class="m">'+esc(m.notation)+'</span><span class="review-tag">'+reviewTag(m)+'</span><span class="by">'+esc(m.actor)+(m.opening?' \u00b7 '+esc(m.opening):'')+(m.capture?' \u00b7 captured '+esc(pieceName(m.captured)):'')+'</span><span class="learn">'+esc(reviewLine(m))+'</span></div></div>';
     }).join('') : '<div class="gem"><span class="b">No moves were recorded for this game.</span></div>';
     return '<div class="overlay" data-act="closeReviewBg"><div class="sheet" data-stop="1">'+
       '<div class="sheet-head bd"><div><p class="sk">After Action Report</p><h2>Review Game</h2><p class="note">'+esc(resultText())+'</p></div><button class="closex" data-act="closeReview">\u2715</button></div>'+
@@ -1045,6 +1113,8 @@
           '<div class="review-stat"><span>Difficulty</span><strong>'+difficultyKingsText(c.diff)+'</strong></div>'+
           '<div class="review-stat"><span>Captures</span><strong>'+captures+'</strong></div>'+
         '</div>'+
+        '<p class="sublabel">Key insights</p>'+
+        '<div class="review-notes">'+reviewInsights()+'</div>'+
         '<p class="sublabel">Move timeline</p>'+
         '<div class="review-list">'+moves+'</div>'+
       '</div></div></div>';
