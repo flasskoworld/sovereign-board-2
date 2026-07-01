@@ -214,6 +214,50 @@
   var GLYPH = {K:'\u265A',Q:'\u265B',R:'\u265C',B:'\u265D',N:'\u265E',P:'\u265F'};
   var SVAL = {P:100,N:320,B:330,R:500,Q:900,K:20000};
   var FILES = 'abcdefgh';
+  var OPENING_MEMORY = {};
+  var pendingOpeningName = '';
+  var OPENING_BOOK = {
+    havana:{
+      w:[['English Opening','c2c4','g1f3','g2g3','f1g2'],['King\'s Indian Attack','g1f3','g2g3','f1g2','e1g1'],['Queen\'s Pawn Game','d2d4','g1f3','c2c4','g2g3']],
+      b:[['Modern Defense','g7g6','f8g7','d7d6','g8f6'],['Dutch Defense','f7f5','g8f6','e7e6','f8e7'],['King\'s Indian Defense','g8f6','g7g6','f8g7','e8g8']]
+    },
+    cairo:{
+      w:[['Ruy Lopez','e2e4','g1f3','f1b5','e1g1'],['Italian Game','e2e4','g1f3','f1c4','d2d3'],['Queen\'s Gambit','d2d4','c2c4','b1c3','c1g5'],['English Opening','c2c4','g1f3','b1c3','g2g3']],
+      b:[['Caro-Kann Defense','c7c6','d7d5','c8f5','e7e6'],['French Defense','e7e6','d7d5','g8f6','f8e7'],['Classical Sicilian','c7c5','d7d6','g8f6','b8c6'],['Open Game','e7e5','b8c6','g8f6','f8c5']]
+    },
+    tokyo:{
+      w:[['London System','d2d4','g1f3','c1f4','e2e3'],['Reti Opening','g1f3','c2c4','g2g3','f1g2'],['Colle System','d2d4','g1f3','e2e3','f1d3']],
+      b:[['Caro-Kann Defense','c7c6','d7d5','c8f5','e7e6'],['Slav Defense','d7d5','c7c6','g8f6','c8f5'],['Nimzo-Indian Setup','g8f6','e7e6','f8b4','e8g8']]
+    },
+    rome:{
+      w:[['Italian Game','e2e4','g1f3','f1c4','c2c3'],['Scotch Game','e2e4','g1f3','d2d4','f3d4'],['Ruy Lopez','e2e4','g1f3','f1b5','e1g1']],
+      b:[['Open Game','e7e5','b8c6','g8f6','f8c5'],['Classical Sicilian','c7c5','b8c6','g8f6','d7d6'],['French Defense','e7e6','d7d5','g8f6','f8e7']]
+    },
+    lagos:{
+      w:[['King\'s Gambit','e2e4','f2f4','g1f3','f1c4'],['Vienna Game','e2e4','b1c3','f2f4','g1f3'],['Scotch Game','e2e4','g1f3','d2d4','f3d4'],['Bird Opening','f2f4','g1f3','e2e3','f1e2']],
+      b:[['Sicilian Dragon','c7c5','d7d6','g8f6','g7g6'],['Pirc Defense','d7d6','g8f6','g7g6','f8g7'],['Modern Defense','g7g6','f8g7','d7d6','g8f6']]
+    },
+    meroe:{
+      w:[['Catalan Opening','d2d4','c2c4','g2g3','f1g2'],['Queen\'s Gambit','d2d4','c2c4','b1c3','g1f3'],['English Opening','c2c4','b1c3','g2g3','f1g2']],
+      b:[['Queen\'s Indian Defense','g8f6','e7e6','b7b6','c8b7'],['Nimzo-Indian Defense','g8f6','e7e6','f8b4','d7d5'],['Slav Defense','d7d5','c7c6','g8f6','e7e6']]
+    },
+    delhi:{
+      w:[['Four Knights Game','e2e4','g1f3','b1c3','f1b5'],['Queen\'s Gambit','d2d4','c2c4','g1f3','b1c3'],['English Opening','c2c4','g1f3','g2g3','f1g2']],
+      b:[['King\'s Indian Defense','g8f6','g7g6','f8g7','e8g8'],['Grunfeld Setup','g8f6','g7g6','d7d5','f8g7'],['Pirc Defense','d7d6','g8f6','g7g6','f8g7']]
+    },
+    london:{
+      w:[['London System','d2d4','g1f3','c1f4','e2e3'],['Colle System','d2d4','g1f3','e2e3','f1d3'],['English Opening','c2c4','g1f3','b1c3','g2g3']],
+      b:[['Caro-Kann Defense','c7c6','d7d5','g8f6','c8f5'],['Slav Defense','d7d5','c7c6','g8f6','e7e6'],['Queen\'s Gambit Declined','d7d5','e7e6','g8f6','f8e7']]
+    },
+    persia:{
+      w:[['King\'s Indian Attack','g1f3','g2g3','f1g2','e1g1'],['Catalan Opening','d2d4','c2c4','g2g3','f1g2'],['English Opening','c2c4','g2g3','f1g2','b1c3']],
+      b:[['Modern Defense','g7g6','f8g7','d7d6','g8f6'],['Pirc Defense','d7d6','g8f6','g7g6','f8g7'],['King\'s Indian Defense','g8f6','g7g6','f8g7','e8g8']]
+    },
+    wallstreet:{
+      w:[['Queen\'s Gambit','d2d4','c2c4','g1f3','b1c3'],['Catalan Opening','d2d4','c2c4','g2g3','f1g2'],['English Opening','c2c4','g1f3','g2g3','f1g2']],
+      b:[['Sicilian Defense','c7c5','d7d6','g8f6','g7g6'],['Benoni Defense','g8f6','c7c5','e7e6','g7g6'],['King\'s Indian Defense','g8f6','g7g6','f8g7','e8g8']]
+    }
+  };
   var GEMS = [
     {t:'Hold the Centre', b:'Whoever commands the middle squares dictates the terms of the war.'},
     {t:'No Soldier on the Rim', b:'A knight on the edge defends half the ground a centred knight would.'},
@@ -287,6 +331,8 @@
     for(var i=1;i<=5;i++) out += i<=diff ? '\u265A\uFE0E' : '\u25CC';
     return out;
   }
+  function squareName(i){ return FILES[i%8]+(8-Math.floor(i/8)); }
+  function moveCode(m){ return squareName(m.from)+squareName(m.to); }
   function resultText(){
     if(!S.over) return 'In progress';
     return S.overTitle || 'The board is settled';
@@ -503,6 +549,54 @@
     return best;
   }
 
+  function openingLimit(diff){ return diff<=2 ? 2 : (diff<=4 ? 4 : 6); }
+  function rememberOpening(key,code){
+    var arr=OPENING_MEMORY[key]||[];
+    arr.push(code);
+    OPENING_MEMORY[key]=arr.slice(-4);
+  }
+  function openingFreshness(key,code){
+    var arr=OPENING_MEMORY[key]||[], idx=arr.lastIndexOf(code);
+    return idx<0 ? 5 : Math.max(1,idx+1);
+  }
+  function bookMove(side){
+    var cityData=city(), lines=(OPENING_BOOK[cityData.key]||OPENING_BOOK.cairo)[side]||[];
+    if(!lines.length) return null;
+    var sideMoveCount=S.review.filter(function(m){ return m.side===side; }).length;
+    if(sideMoveCount>=openingLimit(cityData.diff)) return null;
+    var legal=legalAll(S.board,side,S.castling,S.ep);
+    if(!legal.length) return null;
+    var seen={}, candidates=[];
+    lines.forEach(function(line){
+      var code=line[sideMoveCount+1];
+      if(!code) return;
+      for(var i=0;i<legal.length;i++){
+        if(moveCode(legal[i])===code){
+          var key=code+'|'+line[0];
+          if(!seen[key]){
+            seen[key]=true;
+            candidates.push({move:legal[i], code:code, name:line[0]});
+          }
+        }
+      }
+    });
+    if(!candidates.length) return null;
+    var memKey=cityData.key+':'+side+':'+sideMoveCount, total=0;
+    candidates.forEach(function(cand){
+      cand.weight=openingFreshness(memKey,cand.code)+(Math.random()*2);
+      if(cityData.diff>=4 && sideMoveCount>0) cand.weight+=1;
+      total+=cand.weight;
+    });
+    var roll=Math.random()*total, chosen=candidates[candidates.length-1];
+    for(var j=0;j<candidates.length;j++){
+      roll-=candidates[j].weight;
+      if(roll<=0){ chosen=candidates[j]; break; }
+    }
+    rememberOpening(memKey,chosen.code);
+    chosen.move.openingName=chosen.name;
+    return chosen.move;
+  }
+
   // ---------- gameplay ----------
   function handleCell(i){
     if(S.over) return;
@@ -534,7 +628,9 @@
     var actor = S.mode==='mp'
       ? (S.turn===S.myColor ? (S.mpName||'You') : S.friendName)
       : (S.turn===S.side ? 'You' : city().opp);
-    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn}]);
+    var openingName=pendingOpeningName;
+    pendingOpeningName='';
+    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn, opening:openingName}]);
     var coach=S.coach;
     if(byHuman && S.mode==='cpu') coach = taken ? pick(CAPTURE_TIPS) : pick(PLAYER_TIPS);
     var pmc = byHuman ? S.playerMoveCount+1 : S.playerMoveCount;
@@ -588,16 +684,19 @@
     var diff=city().diff;
     var depthMap={1:1,2:1,3:2,4:2,5:3};
     var blunder={1:0.5,2:0.28,3:0.1,4:0.03,5:0};
-    var best;
+    var best=bookMove(opp);
     var legal=legalAll(S.board,opp,S.castling,S.ep);
     if(!legal.length) return;
-    if(Math.random()<(blunder[diff]||0)) best=legal[Math.floor(Math.random()*legal.length)];
-    else best=aiPick(S.board,opp,depthMap[diff]||2,S.castling,S.ep)||legal[0];
+    if(!best){
+      if(Math.random()<(blunder[diff]||0)) best=legal[Math.floor(Math.random()*legal.length)];
+      else best=aiPick(S.board,opp,depthMap[diff]||2,S.castling,S.ep)||legal[0];
+    }
     var took=!!S.board[best.to];
+    pendingOpeningName=best.openingName||'';
     doMove(best.from,best.to,'cpu');
     var msg=took
       ? city().opp+' struck \u2014 you lost a piece. Look to win it back, or tap Hint.'
-      : city().opp+' developed quietly. Your move \u2014 seize the centre.';
+      : (best.openingName ? city().opp+' opens with '+best.openingName+'. Your move \u2014 answer the plan.' : city().opp+' developed quietly. Your move \u2014 seize the centre.');
     setTimeout(function(){ if(!S.over){ set({coach:msg}); } },120);
   }
   function hint(){
@@ -615,6 +714,7 @@
     set({board:prev.board,castling:prev.castling,ep:prev.ep,captured:prev.captured,last:prev.last,log:prev.log,review:prev.review||[],turn:prev.turn,gems:prev.gems,playerMoveCount:prev.playerMoveCount,firstCapture:prev.firstCapture,history:S.history.slice(0,-1),selected:null,legal:[],hintMove:null,over:false,check:false,coach:'Move recalled. No ground lost \u2014 try a different line.'});
   }
   function resetGame(){
+    pendingOpeningName='';
     var intro = S.mode==='mp' ? '' : 'Theatre: '+city().name+'. You face '+city().opp+'. '+city().line;
     set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:intro});
     if(S.mode==='cpu'&&S.side==='b') setTimeout(opponentMove,700);
@@ -671,6 +771,7 @@
     listenMoves(); listenChat(); listenRematch();
   }
   function resetOnlineBoard(){
+    pendingOpeningName='';
     set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:''});
   }
   function setupPresence(color){
@@ -933,7 +1034,7 @@
     var c=city();
     var captures=S.review.filter(function(m){ return m.capture; }).length;
     var moves=S.review.length ? S.review.map(function(m,i){
-      return '<div class="review-move"><span class="n">'+(i+1)+'</span><div><span class="m">'+esc(m.notation)+'</span><span class="by">'+esc(m.actor)+(m.capture?' \u00b7 capture':'')+'</span></div></div>';
+      return '<div class="review-move"><span class="n">'+(i+1)+'</span><div><span class="m">'+esc(m.notation)+'</span><span class="by">'+esc(m.actor)+(m.opening?' \u00b7 '+esc(m.opening):'')+(m.capture?' \u00b7 capture':'')+'</span></div></div>';
     }).join('') : '<div class="gem"><span class="b">No moves were recorded for this game.</span></div>';
     return '<div class="overlay" data-act="closeReviewBg"><div class="sheet" data-stop="1">'+
       '<div class="sheet-head bd"><div><p class="sk">After Action Report</p><h2>Review Game</h2><p class="note">'+esc(resultText())+'</p></div><button class="closex" data-act="closeReview">\u2715</button></div>'+
