@@ -344,6 +344,7 @@
     projectId: "sovereignboard-74e2c"
   };
   var fbDb=null, roomId=null, pendingRoom=null;
+  var appliedMoveIds={};
   function firebaseReady(){ return typeof firebase!=='undefined' && !!FIREBASE_CONFIG.apiKey; }
   function getDb(){
     if(fbDb) return fbDb;
@@ -354,6 +355,17 @@
   }
   function makeRoomId(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
   function roomUrl(id){ return location.origin+location.pathname+'?room='+id; }
+  function setRoomUrl(id){ try{ history.replaceState(null,'',roomUrl(id)); }catch(e){} }
+  function roomStoreKey(id){ return 'sb_room_'+id; }
+  function saveRoomSession(id,color,name){
+    try{
+      localStorage.setItem(roomStoreKey(id), JSON.stringify({roomId:id,color:color,name:name,ts:Date.now()}));
+      localStorage.setItem('sb_last_room', id);
+    }catch(e){}
+  }
+  function getRoomSession(id){
+    try{ return JSON.parse(localStorage.getItem(roomStoreKey(id))||'null'); }catch(e){ return null; }
+  }
 
   function set(patch, cb){ for(var k in patch) S[k]=patch[k]; render(); if(cb) cb(); }
   function city(){ for(var i=0;i<CITIES.length;i++){ if(CITIES[i].key===S.cityKey) return CITIES[i]; } return CITIES[0]; }
@@ -852,6 +864,8 @@
     var id=makeRoomId(); roomId=id;
     var initial={ players:{w:name}, theme:S.cityKey, status:'waiting', turn:'w', moves:{}, created:Date.now() };
     db.ref('rooms/'+id).set(initial).then(function(){
+      saveRoomSession(id,'w',name);
+      setRoomUrl(id);
       set({mpName:name, myColor:'w', mpLink:roomUrl(id), mpStep:'wait', friendName:'your challenger'});
       setupPresence('w');
       watchJoin();
@@ -876,6 +890,8 @@
       roomId=id;
       db.ref('rooms/'+id+'/players/b').set(name);
       db.ref('rooms/'+id+'/status').set('active');
+      saveRoomSession(id,'b',name);
+      setRoomUrl(id);
       var patch={mpName:name, myColor:'b', friendName:(data.players&&data.players.w)||'Host', joinOpen:false};
       if(data.theme) patch.cityKey=data.theme;
       set(patch);
@@ -883,10 +899,44 @@
       enterOnline('b');
     }).catch(function(){ alert('Could not reach the board. Check your connection.'); set({joinOpen:false}); });
   }
-  function enterOnline(color){
+  function resumeRoom(id,session){
+    var db=getDb();
+    if(!db||!session){ S.joinOpen=true; render(); return; }
+    db.ref('rooms/'+id).once('value').then(function(snap){
+      var data=snap.val();
+      if(!data||!data.players||data.players[session.color]!==session.name){
+        S.joinOpen=true; render(); return;
+      }
+      roomId=id; pendingRoom=id; appliedMoveIds={};
+      setRoomUrl(id);
+      if(session.color==='w' && !(data.players&&data.players.b)){
+        set({mpName:session.name,myColor:'w',mpLink:roomUrl(id),mpStep:'wait',friendName:'your challenger',challengeOpen:true,joinOpen:false});
+        setupPresence('w');
+        watchJoin();
+        return;
+      }
+      var friend=session.color==='w' ? (data.players.b||'your challenger') : (data.players.w||'Host');
+      var patch={mpName:session.name,myColor:session.color,friendName:friend,joinOpen:false,challengeOpen:false,screen:'game',mode:'mp',online:true,oppOnline:false,chatOpen:false,chatDraft:'',chatUnread:0,chat:[]};
+      if(data.theme) patch.cityKey=data.theme;
+      set(patch);
+      resetOnlineBoard();
+      var moves=data.moves||{};
+      Object.keys(moves).sort().forEach(function(key){
+        var mv=moves[key];
+        if(!mv) return;
+        appliedMoveIds[key]=true;
+        doMove(mv.from,mv.to,'replay');
+      });
+      setupPresence(session.color);
+      listenMoves(); listenChat(); listenRematch();
+    }).catch(function(){
+      S.joinOpen=true; render();
+    });
+  }
+  function enterOnline(color,opts){
     if(S.online) return;
     set({challengeOpen:false, joinOpen:false, screen:'game', mode:'mp', online:true, myColor:color, chatOpen:false, chatDraft:'', chatUnread:0, chat:[]});
-    resetOnlineBoard();
+    if(!opts || !opts.skipReset) resetOnlineBoard();
     listenMoves(); listenChat(); listenRematch();
   }
   function resetOnlineBoard(){
@@ -903,6 +953,7 @@
   function listenMoves(){
     var db=getDb(); if(!db) return;
     db.ref('rooms/'+roomId+'/moves').on('child_added',function(snap){
+      if(appliedMoveIds[snap.key]) return;
       var mv=snap.val(); if(!mv) return;
       if(mv.by===S.myColor) return;
       if(S.over) return;
@@ -923,12 +974,12 @@
   function listenRematch(){
     var db=getDb(); if(!db) return; var last=0;
     db.ref('rooms/'+roomId+'/rematch').on('value',function(snap){
-      var v=snap.val(); if(v && v!==last){ last=v; resetOnlineBoard(); }
+      var v=snap.val(); if(v && v!==last){ last=v; appliedMoveIds={}; resetOnlineBoard(); }
     });
   }
   function requestRematch(){
     if(S.online && !S.over){ set({coach:'Finish the current duel before starting a rematch.'}); return; }
-    try{ getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){}
+    try{ appliedMoveIds={}; getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){}
   }
   function leaveRoom(){
     var db=getDb();
@@ -1360,7 +1411,12 @@
 
   // ---------- boot ----------
   var roomMatch = location.search.match(/[?&]room=([A-Za-z0-9]+)/);
-  if(roomMatch){ pendingRoom = roomMatch[1]; S.joinOpen = true; }
+  if(roomMatch){
+    pendingRoom = roomMatch[1];
+    var savedSession=getRoomSession(pendingRoom);
+    if(savedSession && savedSession.roomId===pendingRoom) resumeRoom(pendingRoom,savedSession);
+    else S.joinOpen = true;
+  }
   render();
   buildMap();
 })();
