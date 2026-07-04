@@ -215,6 +215,13 @@
   .step p.d{font-size:13px; line-height:1.5; color:var(--dim); margin:0 0 16px;}
   .field{width:100%; background:var(--bg); border:1px solid var(--border); color:var(--text); -webkit-text-fill-color:var(--text); caret-color:var(--accent); font-family:'Inter',sans-serif; font-size:16px; padding:12px 13px; border-radius:9px; outline:none; margin-bottom:16px;}
   .field:focus{border-color:var(--accent);}
+  .time-grid{display:grid; grid-template-columns:repeat(4,1fr); gap:7px; margin:0 0 16px;}
+  .time-opt{min-width:0; border:1px solid var(--border); border-radius:9px; background:var(--bg); color:var(--dim); font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:10px 4px; cursor:pointer;}
+  .time-opt.on{border-color:var(--accent); background:var(--accent-soft); color:var(--accent);}
+  .clock-row{display:flex; align-items:center; gap:7px; margin-top:3px;}
+  .clock-pill{display:inline-flex; align-items:center; gap:5px; border:1px solid var(--border); border-radius:999px; padding:3px 7px; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.05em; color:var(--dim); background:#0d1117;}
+  .clock-pill.hot{border-color:var(--accent); color:var(--accent); background:var(--accent-soft);}
+  .clock-pill.low{border-color:#e0554a; color:#ff9b91; background:rgba(224,85,74,.12);}
   .linkrow{display:flex; gap:8px; margin-bottom:12px;}
   .linkrow input{flex:1; background:var(--bg); border:1px solid var(--border); color:var(--dim); font-family:'Space Mono',monospace; font-size:11px; padding:11px 12px; border-radius:9px; outline:none;}
   .linkrow button{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:0 16px; border-radius:9px; border:none; background:var(--accent); color:#0b0e14; cursor:pointer;}
@@ -331,10 +338,12 @@
     codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
     chat:[], chatOpen:false, chatDraft:'', chatUnread:0,
-    online:false, myColor:'w', oppOnline:false, joinOpen:false
+    online:false, myColor:'w', oppOnline:false, joinOpen:false,
+    timeControl:'casual', clock:null, clockTick:0
   };
   var projection = null, mapPaths = null;
   var chatLockScroll = 0;
+  var clockTimer = null;
 
   // ---------- firebase ----------
   var FIREBASE_CONFIG = {
@@ -387,6 +396,60 @@
 
   function set(patch, cb){ for(var k in patch) S[k]=patch[k]; render(); if(cb) cb(); }
   function city(){ for(var i=0;i<CITIES.length;i++){ if(CITIES[i].key===S.cityKey) return CITIES[i]; } return CITIES[0]; }
+  var TIME_CONTROLS = [
+    {key:'casual', label:'Casual', seconds:0},
+    {key:'2', label:'2 min', seconds:120},
+    {key:'5', label:'5 min', seconds:300},
+    {key:'10', label:'10 min', seconds:600}
+  ];
+  function timeControl(key){
+    for(var i=0;i<TIME_CONTROLS.length;i++){ if(TIME_CONTROLS[i].key===key) return TIME_CONTROLS[i]; }
+    return TIME_CONTROLS[0];
+  }
+  function timeLabel(key){ return timeControl(key).label; }
+  function makeClock(key){
+    var tc=timeControl(key);
+    if(!tc.seconds) return null;
+    return {base:tc.seconds, w:tc.seconds*1000, b:tc.seconds*1000, active:'w', lastTick:Date.now(), running:false};
+  }
+  function clockMs(clock,color,now){
+    if(!clock) return null;
+    var ms=clock[color];
+    if(clock.running && clock.active===color) ms -= Math.max(0,(now||Date.now())-(clock.lastTick||Date.now()));
+    return Math.max(0,ms);
+  }
+  function clockText(ms){
+    if(ms===null||ms===undefined) return '';
+    var sec=Math.ceil(ms/1000), m=Math.floor(sec/60), s=sec%60;
+    return m+':'+(s<10?'0':'')+s;
+  }
+  function clockLabel(color){
+    if(!S.clock) return '';
+    var ms=clockMs(S.clock,color,Date.now());
+    var cls='clock-pill'+(S.clock.running&&S.clock.active===color&&!S.over?' hot':'')+(ms!==null&&ms<=10000?' low':'');
+    return '<span class="'+cls+'">'+(color==='w'?'White':'Black')+' '+clockText(ms)+'</span>';
+  }
+  function nextClockAfterMove(){
+    if(!S.clock) return null;
+    var now=Date.now(), mover=S.turn==='w'?'b':'w';
+    var clock={base:S.clock.base,w:clockMs(S.clock,'w',now),b:clockMs(S.clock,'b',now),active:S.turn,lastTick:now,running:!S.over};
+    clock[mover]=Math.max(0,clock[mover]);
+    return clock;
+  }
+  function expiredClockColor(){
+    if(!S.clock||!S.clock.running||S.over) return '';
+    var active=S.clock.active;
+    return clockMs(S.clock,active,Date.now())<=0 ? active : '';
+  }
+  function startClockTicker(){
+    if(clockTimer) return;
+    clockTimer=setInterval(function(){
+      if(!(S.mode==='mp'&&S.online&&S.clock&&S.clock.running&&!S.over)) return;
+      var expired=expiredClockColor();
+      if(expired) flagTimeout(expired);
+      else set({clockTick:Date.now()});
+    },1000);
+  }
   function pieceGlyph(type){ return (GLYPH[type]||'')+'\uFE0E'; }
   function pieceName(type){
     return ({P:'pawn',N:'knight',B:'bishop',R:'rook',Q:'queen',K:'king'})[type] || 'piece';
@@ -776,10 +839,13 @@
   function pushMove(from,to){
     try{
       var db=getDb(); if(!db||!roomId) return;
+      var clock=nextClockAfterMove();
+      if(clock) set({clock:clock});
       var ref=db.ref('rooms/'+roomId+'/moves').push();
       appliedMoveIds[ref.key]=true;
       var updates={};
-      updates['rooms/'+roomId+'/moves/'+ref.key]={from:from,to:to,by:S.myColor,ts:Date.now()};
+      updates['rooms/'+roomId+'/moves/'+ref.key]={from:from,to:to,by:S.myColor,clock:clock,ts:Date.now()};
+      updates['rooms/'+roomId+'/clock']=clock;
       updates['rooms/'+roomId+'/state']=roomStateSnapshot();
       updates['rooms/'+roomId+'/turn']=S.turn;
       updates['rooms/'+roomId+'/updated']=Date.now();
@@ -893,7 +959,7 @@
     if(!db){ set({mpName:name, mpLink:roomUrl(makeRoomId()), mpStep:'wait'}); return; }
     var id=makeRoomId(); roomId=id;
     var token=makePlayerToken();
-    var initial={ players:{w:{name:name,token:token}}, theme:S.cityKey, status:'waiting', turn:'w', moves:{}, created:Date.now() };
+    var initial={ players:{w:{name:name,token:token}}, theme:S.cityKey, timeControl:S.timeControl, clock:makeClock(S.timeControl), status:'waiting', turn:'w', moves:{}, created:Date.now() };
     db.ref('rooms/'+id).set(initial).then(function(){
       saveRoomSession(id,'w',name,token);
       setRoomUrl(id,token);
@@ -921,15 +987,27 @@
       roomId=id;
       var token=makePlayerToken();
       db.ref('rooms/'+id+'/players/b').set({name:name,token:token});
-      db.ref('rooms/'+id+'/status').set('active');
+      var clock=data.clock||makeClock(data.timeControl||'casual');
+      if(clock){ clock.running=true; clock.active=clock.active||'w'; clock.lastTick=Date.now(); }
+      db.ref('rooms/'+id).update({status:'active', clock:clock, updated:Date.now()});
       saveRoomSession(id,'b',name,token);
       setRoomUrl(id,token);
-      var patch={mpName:name, myColor:'b', friendName:playerName(data.players,'w')||'Host', joinOpen:false};
+      var patch={mpName:name, myColor:'b', friendName:playerName(data.players,'w')||'Host', joinOpen:false, timeControl:data.timeControl||'casual', clock:clock};
       if(data.theme) patch.cityKey=data.theme;
       set(patch);
       setupPresence('b');
       enterOnline('b');
     }).catch(function(){ alert('Could not reach the board. Check your connection.'); set({joinOpen:false}); });
+  }
+  function openJoinRoom(id){
+    S.joinOpen=true; render();
+    var db=getDb(); if(!db||!id) return;
+    db.ref('rooms/'+id).once('value').then(function(snap){
+      var data=snap.val(); if(!data) return;
+      var patch={joinOpen:true,timeControl:data.timeControl||'casual',friendName:playerName(data.players,'w')||'Host'};
+      if(data.theme) patch.cityKey=data.theme;
+      set(patch);
+    }).catch(function(){});
   }
   function resumeRoom(id,session){
     var db=getDb();
@@ -948,7 +1026,7 @@
         return;
       }
       var friend=session.color==='w' ? (playerName(data.players,'b')||'your challenger') : (playerName(data.players,'w')||'Host');
-      var patch={mpName:session.name,myColor:session.color,friendName:friend,joinOpen:false,challengeOpen:false,screen:'game',mode:'mp',online:true,oppOnline:false,chatOpen:false,chatDraft:'',chatUnread:0,chat:[]};
+      var patch={mpName:session.name,myColor:session.color,friendName:friend,joinOpen:false,challengeOpen:false,screen:'game',mode:'mp',online:true,oppOnline:false,chatOpen:false,chatDraft:'',chatUnread:0,chat:[],timeControl:data.timeControl||'casual',clock:data.clock||null};
       if(data.theme) patch.cityKey=data.theme;
       set(patch);
       resetOnlineBoard();
@@ -965,7 +1043,7 @@
         });
       }
       setupPresence(session.color);
-      listenMoves(); listenChat(); listenRematch();
+      listenMoves(); listenClock(); listenChat(); listenRematch(); listenRoomState();
     }).catch(function(){
       S.joinOpen=true; render();
     });
@@ -993,7 +1071,7 @@
     if(S.online) return;
     set({challengeOpen:false, joinOpen:false, screen:'game', mode:'mp', online:true, myColor:color, chatOpen:false, chatDraft:'', chatUnread:0, chat:[]});
     if(!opts || !opts.skipReset) resetOnlineBoard();
-    listenMoves(); listenChat(); listenRematch();
+    listenMoves(); listenClock(); listenChat(); listenRematch(); listenRoomState();
   }
   function resetOnlineBoard(){
     pendingOpeningName='';
@@ -1003,7 +1081,7 @@
     return {
       board:S.board, turn:S.turn, castling:S.castling, ep:S.ep, captured:S.captured,
       last:S.last, log:S.log, review:S.review, over:S.over, check:S.check,
-      overTitle:S.overTitle||'', overNote:S.overNote||'', updated:Date.now()
+      overTitle:S.overTitle||'', overNote:S.overNote||'', timeControl:S.timeControl, clock:S.clock, updated:Date.now()
     };
   }
   function restoreRoomState(state){
@@ -1013,6 +1091,7 @@
       ep:(typeof state.ep==='number'?state.ep:null), captured:state.captured||{w:[],b:[]},
       last:state.last||null, log:state.log||[], review:state.review||[], over:!!state.over,
       check:!!state.check, overTitle:state.overTitle||'', overNote:state.overNote||'',
+      timeControl:state.timeControl||S.timeControl, clock:state.clock||S.clock,
       selected:null, legal:[], hintMove:null, history:[], reviewOpen:false
     });
     return true;
@@ -1036,6 +1115,21 @@
       if(mv.by===S.myColor) return;
       if(S.over) return;
       doMove(mv.from,mv.to,'remote');
+      if(mv.clock) set({clock:mv.clock});
+    });
+  }
+  function listenClock(){
+    var db=getDb(); if(!db) return;
+    db.ref('rooms/'+roomId+'/clock').on('value',function(snap){
+      var clock=snap.val();
+      if(clock) set({clock:clock});
+    });
+  }
+  function listenRoomState(){
+    var db=getDb(); if(!db) return;
+    db.ref('rooms/'+roomId+'/state').on('value',function(snap){
+      var state=snap.val();
+      if(state && state.over && !S.over) restoreRoomState(state);
     });
   }
   function listenChat(){
@@ -1050,9 +1144,11 @@
     });
   }
   function listenRematch(){
-    var db=getDb(); if(!db) return; var last=0;
+    var db=getDb(); if(!db) return; var last=0, primed=false;
     db.ref('rooms/'+roomId+'/rematch').on('value',function(snap){
-      var v=snap.val(); if(v && v!==last){ last=v; appliedMoveIds={}; resetOnlineBoard(); }
+      var v=snap.val();
+      if(!primed){ last=v||0; primed=true; return; }
+      if(v && v!==last){ last=v; appliedMoveIds={}; resetOnlineBoard(); }
     });
   }
   function requestRematch(){
@@ -1060,8 +1156,19 @@
     try{
       appliedMoveIds={};
       resetOnlineBoard();
-      getDb().ref('rooms/'+roomId).update({moves:null,state:roomStateSnapshot(),turn:'w',rematch:Date.now(),updated:Date.now()});
+      var clock=makeClock(S.timeControl);
+      if(clock){ clock.running=true; clock.active='w'; clock.lastTick=Date.now(); }
+      set({clock:clock});
+      getDb().ref('rooms/'+roomId).update({moves:null,clock:clock,state:roomStateSnapshot(),turn:'w',rematch:Date.now(),updated:Date.now()});
     }catch(e){}
+  }
+  function flagTimeout(color){
+    if(S.over||!S.clock) return;
+    var winner=color==='w'?'Black':'White';
+    var clock={base:S.clock.base,w:clockMs(S.clock,'w',Date.now()),b:clockMs(S.clock,'b',Date.now()),active:S.clock.active,lastTick:Date.now(),running:false};
+    clock[color]=0;
+    set({clock:clock,over:true,check:false,overTitle:winner+' wins on time.',overNote:'The clock fell. Review the game, rematch, or return to the Atlas.'});
+    try{ getDb().ref('rooms/'+roomId).update({clock:clock,state:roomStateSnapshot(),status:'finished',updated:Date.now()}); }catch(e){}
   }
   function leaveRoom(){
     var db=getDb();
@@ -1244,18 +1351,20 @@
     var youGlyph=isMp?(mc==='w'?'\u2654':'\u265A'):'\u2654';
     var youName=isMp?(S.mpName||'You'):'You';
     var youSub=isMp?(mc==='w'?'White crown':'Black crown'):(S.side==='w'?'Playing White':'Playing Black');
+    var oppClock=isMp&&S.clock ? '<div class="clock-row">'+clockLabel(mc==='w'?'b':'w')+'</div>' : '';
+    var youClock=isMp&&S.clock ? '<div class="clock-row">'+clockLabel(mc)+'</div>' : '';
 
     var topStrip='<div class="strip">'+
       '<button class="iconbtn" data-act="home">\u2039</button>'+
       '<div class="avatar">'+oppGlyph+'</div>'+
-      '<div class="who"><span class="nm">'+esc(oppName)+'</span><span class="sub">'+esc(oppSub)+'</span></div>'+
+      '<div class="who"><span class="nm">'+esc(oppName)+'</span><span class="sub">'+esc(oppSub)+'</span>'+oppClock+'</div>'+
       '<span class="turn-pill'+pillCls+'"><span class="dot-s" style="background:'+dotColor+';"></span>'+pillText+'</span>'+
     '</div>';
 
     var youCaps=S.captured.w.map(function(g){ return '<span>'+g+'</span>'; }).join('');
     var youStrip='<div class="strip">'+
       '<div class="avatar you">'+youGlyph+'</div>'+
-      '<div class="who"><span class="nm">'+esc(youName)+'</span><span class="sub">'+esc(youSub)+'</span></div>'+
+      '<div class="who"><span class="nm">'+esc(youName)+'</span><span class="sub">'+esc(youSub)+'</span>'+youClock+'</div>'+
       '<div class="cap-tray">'+youCaps+'</div>'+
     '</div>';
 
@@ -1401,11 +1510,13 @@
     if(!S.challengeOpen) return '';
     var body;
     if(S.mpStep==='create'){
+      var times=TIME_CONTROLS.map(function(t){ return '<button class="time-opt '+(S.timeControl===t.key?'on':'')+'" data-act="timeControl" data-time="'+t.key+'" type="button">'+t.label+'</button>'; }).join('');
       body='<div class="step"><p class="d">Send a link. Whoever opens it takes the opposing crown \u2014 no account, the link is the key.</p>'+
         '<p class="sublabel">Your name</p><input class="field" id="mpName" name="name" placeholder="Commander\u2026" maxlength="20" autocomplete="name" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go" value="'+esc(S.mpName)+'">'+
+        '<p class="sublabel">Game speed</p><div class="time-grid">'+times+'</div>'+
         '<button class="btn-primary" data-act="createLink" type="button">Create challenge link</button></div>';
     } else {
-      body='<div class="step"><p class="d">Link forged. Share it with your challenger \u2014 whoever opens it commands Black.</p>'+
+      body='<div class="step"><p class="d">Link forged. Share it with your challenger \u2014 whoever opens it commands Black. Speed: '+esc(timeLabel(S.timeControl))+'.</p>'+
         '<div class="linkrow"><input readonly value="'+esc(S.mpLink)+'"><button data-act="copyLink">'+S.copyLabel+'</button></div>'+
         '<button class="btn-ghost" data-act="share" style="margin-top:0;"><span class="ic">\u21ea</span>Share link</button>'+
         '<div class="waiting"><span class="d"></span><span>Waiting for your challenger to join\u2026</span></div>'+
@@ -1420,9 +1531,12 @@
 
   function joinSheetHTML(){
     if(!S.joinOpen) return '';
+    var joinCopy='You\u2019ve been challenged';
+    if(pendingRoom) joinCopy+=' by '+esc(S.friendName||'Host');
+    joinCopy+='. Enter your name to take Black and begin. Speed: '+esc(timeLabel(S.timeControl))+'.';
     return '<div class="overlay"><div class="sheet" data-stop="1">'+
       '<div class="sheet-head"><div><p class="sk">Incoming challenge</p><h2>Join the board</h2></div><button class="closex" data-act="closeJoin">\u2715</button></div>'+
-      '<div class="step"><p class="d">You\u2019ve been challenged. Enter your name to take Black and begin.</p>'+
+      '<div class="step"><p class="d">'+joinCopy+'</p>'+
       '<p class="sublabel">Your name</p><input class="field" id="joinName" name="name" placeholder="Challenger\u2026" maxlength="20" autocomplete="name" autocapitalize="words" autocorrect="off" spellcheck="false" enterkeyhint="go">'+
       '<button class="btn-primary" data-act="submitJoin" type="button">Join the board</button></div></div></div>';
   }
@@ -1448,6 +1562,7 @@
       case 'side': var sd=el.getAttribute('data-side'); set({side: sd==='r'?(Math.random()<0.5?'w':'b'):sd}); break;
       case 'start': startGame(); break;
       case 'challenge': openChallenge(); break;
+      case 'timeControl': set({timeControl:el.getAttribute('data-time')||'casual'}); break;
       case 'cell': handleCell(parseInt(el.getAttribute('data-idx'),10)); break;
       case 'hint': hint(); break;
       case 'undo': undo(); break;
@@ -1490,6 +1605,7 @@
     window.visualViewport.addEventListener('resize', function(){ if(document.body.classList.contains('chat-lock')) updateChatKeyboardOffset(); });
     window.visualViewport.addEventListener('scroll', function(){ if(document.body.classList.contains('chat-lock')) updateChatKeyboardOffset(); });
   }
+  startClockTicker();
 
   // ---------- boot ----------
   var roomMatch = location.search.match(/[?&]room=([A-Za-z0-9]+)/);
@@ -1502,7 +1618,7 @@
       resumeRoom(pendingRoom,savedSession);
     }
     else if(urlToken) resumeRoomByToken(pendingRoom,urlToken);
-    else S.joinOpen = true;
+    else openJoinRoom(pendingRoom);
   }
   render();
   buildMap();
