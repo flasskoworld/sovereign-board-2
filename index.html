@@ -1164,7 +1164,8 @@
   }
   function flagTimeout(color){
     if(S.over||!S.clock) return;
-    var winner=color==='w'?'Black':'White';
+    var winnerColor=color==='w'?'b':'w';
+    var winner = winnerColor===S.myColor ? (S.mpName||'You') : (S.friendName||((winnerColor==='w'?'White':'Black')+' crown'));
     var clock={base:S.clock.base,w:clockMs(S.clock,'w',Date.now()),b:clockMs(S.clock,'b',Date.now()),active:S.clock.active,lastTick:Date.now(),running:false};
     clock[color]=0;
     set({clock:clock,over:true,check:false,overTitle:winner+' wins on time.',overNote:'The clock fell. Review the game, rematch, or return to the Atlas.'});
