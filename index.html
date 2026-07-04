@@ -354,17 +354,35 @@
     return fbDb;
   }
   function makeRoomId(){ return Math.random().toString(36).slice(2,7).toUpperCase(); }
+  function makePlayerToken(){ return Math.random().toString(36).slice(2)+Date.now().toString(36); }
   function roomUrl(id){ return location.origin+location.pathname+'?room='+id; }
-  function setRoomUrl(id){ try{ history.replaceState(null,'',roomUrl(id)); }catch(e){} }
-  function roomStoreKey(id){ return 'sb_room_'+id; }
-  function saveRoomSession(id,color,name){
+  function privateRoomUrl(id,token){ return roomUrl(id)+(token?'#p='+encodeURIComponent(token):''); }
+  function urlPlayerToken(){
     try{
-      localStorage.setItem(roomStoreKey(id), JSON.stringify({roomId:id,color:color,name:name,ts:Date.now()}));
+      var m=location.hash.match(/(?:^#|&)p=([^&]+)/);
+      return m ? decodeURIComponent(m[1]) : '';
+    }catch(e){ return ''; }
+  }
+  function setRoomUrl(id,token){ try{ history.replaceState(null,'',privateRoomUrl(id,token)); }catch(e){} }
+  function roomStoreKey(id){ return 'sb_room_'+id; }
+  function saveRoomSession(id,color,name,token){
+    try{
+      localStorage.setItem(roomStoreKey(id), JSON.stringify({roomId:id,color:color,name:name,token:token||'',ts:Date.now()}));
       localStorage.setItem('sb_last_room', id);
     }catch(e){}
   }
   function getRoomSession(id){
     try{ return JSON.parse(localStorage.getItem(roomStoreKey(id))||'null'); }catch(e){ return null; }
+  }
+  function normalizePlayer(p){ return (p && typeof p==='object') ? p : {name:p||'', token:''}; }
+  function playerName(players,color){ var p=normalizePlayer(players&&players[color]); return p.name||''; }
+  function playerToken(players,color){ var p=normalizePlayer(players&&players[color]); return p.token||''; }
+  function sessionMatches(players,session){
+    if(!session) return false;
+    var name=playerName(players,session.color);
+    var token=playerToken(players,session.color);
+    if(token && session.token) return token===session.token;
+    return !!name && name===session.name;
   }
 
   function set(patch, cb){ for(var k in patch) S[k]=patch[k]; render(); if(cb) cb(); }
@@ -755,7 +773,19 @@
     if(byHuman && S.online) pushMove(from,to);
     if(byHuman && S.mode==='cpu' && !S.over) setTimeout(opponentMove,700);
   }
-  function pushMove(from,to){ try{ getDb().ref('rooms/'+roomId+'/moves').push({from:from,to:to,by:S.myColor}); }catch(e){} }
+  function pushMove(from,to){
+    try{
+      var db=getDb(); if(!db||!roomId) return;
+      var ref=db.ref('rooms/'+roomId+'/moves').push();
+      appliedMoveIds[ref.key]=true;
+      var updates={};
+      updates['rooms/'+roomId+'/moves/'+ref.key]={from:from,to:to,by:S.myColor,ts:Date.now()};
+      updates['rooms/'+roomId+'/state']=roomStateSnapshot();
+      updates['rooms/'+roomId+'/turn']=S.turn;
+      updates['rooms/'+roomId+'/updated']=Date.now();
+      db.ref().update(updates);
+    }catch(e){}
+  }
   function maybeGem(){
     var target=Math.min(GEMS.length, Math.floor((S.playerMoveCount+1)/2) + (S.firstCapture?1:0));
     if(target>S.gems.length){
@@ -862,10 +892,11 @@
     var db=getDb();
     if(!db){ set({mpName:name, mpLink:roomUrl(makeRoomId()), mpStep:'wait'}); return; }
     var id=makeRoomId(); roomId=id;
-    var initial={ players:{w:name}, theme:S.cityKey, status:'waiting', turn:'w', moves:{}, created:Date.now() };
+    var token=makePlayerToken();
+    var initial={ players:{w:{name:name,token:token}}, theme:S.cityKey, status:'waiting', turn:'w', moves:{}, created:Date.now() };
     db.ref('rooms/'+id).set(initial).then(function(){
-      saveRoomSession(id,'w',name);
-      setRoomUrl(id);
+      saveRoomSession(id,'w',name,token);
+      setRoomUrl(id,token);
       set({mpName:name, myColor:'w', mpLink:roomUrl(id), mpStep:'wait', friendName:'your challenger'});
       setupPresence('w');
       watchJoin();
@@ -874,7 +905,7 @@
   function watchJoin(){
     var db=getDb(); if(!db) return;
     db.ref('rooms/'+roomId+'/players/b').on('value',function(snap){
-      var b=snap.val();
+      var b=normalizePlayer(snap.val()).name;
       if(b && !S.online){ set({friendName:b}); enterOnline('w'); }
     });
   }
@@ -888,11 +919,12 @@
       if(!data){ alert('That challenge link has expired or was never created.'); set({joinOpen:false}); return; }
       if(data.players && data.players.b){ alert('This board already has two commanders.'); set({joinOpen:false}); return; }
       roomId=id;
-      db.ref('rooms/'+id+'/players/b').set(name);
+      var token=makePlayerToken();
+      db.ref('rooms/'+id+'/players/b').set({name:name,token:token});
       db.ref('rooms/'+id+'/status').set('active');
-      saveRoomSession(id,'b',name);
-      setRoomUrl(id);
-      var patch={mpName:name, myColor:'b', friendName:(data.players&&data.players.w)||'Host', joinOpen:false};
+      saveRoomSession(id,'b',name,token);
+      setRoomUrl(id,token);
+      var patch={mpName:name, myColor:'b', friendName:playerName(data.players,'w')||'Host', joinOpen:false};
       if(data.theme) patch.cityKey=data.theme;
       set(patch);
       setupPresence('b');
@@ -904,31 +936,55 @@
     if(!db||!session){ S.joinOpen=true; render(); return; }
     db.ref('rooms/'+id).once('value').then(function(snap){
       var data=snap.val();
-      if(!data||!data.players||data.players[session.color]!==session.name){
+      if(!data||!data.players||!sessionMatches(data.players,session)){
         S.joinOpen=true; render(); return;
       }
       roomId=id; pendingRoom=id; appliedMoveIds={};
-      setRoomUrl(id);
+      setRoomUrl(id,session.token);
       if(session.color==='w' && !(data.players&&data.players.b)){
         set({mpName:session.name,myColor:'w',mpLink:roomUrl(id),mpStep:'wait',friendName:'your challenger',challengeOpen:true,joinOpen:false});
         setupPresence('w');
         watchJoin();
         return;
       }
-      var friend=session.color==='w' ? (data.players.b||'your challenger') : (data.players.w||'Host');
+      var friend=session.color==='w' ? (playerName(data.players,'b')||'your challenger') : (playerName(data.players,'w')||'Host');
       var patch={mpName:session.name,myColor:session.color,friendName:friend,joinOpen:false,challengeOpen:false,screen:'game',mode:'mp',online:true,oppOnline:false,chatOpen:false,chatDraft:'',chatUnread:0,chat:[]};
       if(data.theme) patch.cityKey=data.theme;
       set(patch);
       resetOnlineBoard();
+      var restored=restoreRoomState(data.state);
       var moves=data.moves||{};
-      Object.keys(moves).sort().forEach(function(key){
-        var mv=moves[key];
-        if(!mv) return;
-        appliedMoveIds[key]=true;
-        doMove(mv.from,mv.to,'replay');
-      });
+      if(restored){
+        Object.keys(moves).forEach(function(key){ appliedMoveIds[key]=true; });
+      } else {
+        Object.keys(moves).sort().forEach(function(key){
+          var mv=moves[key];
+          if(!mv) return;
+          appliedMoveIds[key]=true;
+          doMove(mv.from,mv.to,'replay');
+        });
+      }
       setupPresence(session.color);
       listenMoves(); listenChat(); listenRematch();
+    }).catch(function(){
+      S.joinOpen=true; render();
+    });
+  }
+  function resumeRoomByToken(id,token){
+    var db=getDb();
+    if(!db||!token){ S.joinOpen=true; render(); return; }
+    db.ref('rooms/'+id+'/players').once('value').then(function(snap){
+      var players=snap.val()||{}, colors=['w','b'];
+      for(var i=0;i<colors.length;i++){
+        var color=colors[i], p=normalizePlayer(players[color]);
+        if(p.token && p.token===token){
+          var session={roomId:id,color:color,name:p.name||'Commander',token:token};
+          saveRoomSession(id,color,session.name,token);
+          resumeRoom(id,session);
+          return;
+        }
+      }
+      S.joinOpen=true; render();
     }).catch(function(){
       S.joinOpen=true; render();
     });
@@ -942,6 +998,28 @@
   function resetOnlineBoard(){
     pendingOpeningName='';
     set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:''});
+  }
+  function roomStateSnapshot(){
+    return {
+      board:S.board, turn:S.turn, castling:S.castling, ep:S.ep, captured:S.captured,
+      last:S.last, log:S.log, review:S.review, over:S.over, check:S.check,
+      overTitle:S.overTitle||'', overNote:S.overNote||'', updated:Date.now()
+    };
+  }
+  function restoreRoomState(state){
+    if(!state||!state.board) return false;
+    set({
+      board:state.board, turn:state.turn||'w', castling:state.castling||{wK:true,wQ:true,bK:true,bQ:true},
+      ep:(typeof state.ep==='number'?state.ep:null), captured:state.captured||{w:[],b:[]},
+      last:state.last||null, log:state.log||[], review:state.review||[], over:!!state.over,
+      check:!!state.check, overTitle:state.overTitle||'', overNote:state.overNote||'',
+      selected:null, legal:[], hintMove:null, history:[], reviewOpen:false
+    });
+    return true;
+  }
+  function persistRoomState(){
+    var db=getDb(); if(!db||!roomId) return;
+    try{ db.ref('rooms/'+roomId+'/state').set(roomStateSnapshot()); }catch(e){}
   }
   function setupPresence(color){
     var db=getDb(); if(!db) return;
@@ -979,7 +1057,11 @@
   }
   function requestRematch(){
     if(S.online && !S.over){ set({coach:'Finish the current duel before starting a rematch.'}); return; }
-    try{ appliedMoveIds={}; getDb().ref('rooms/'+roomId+'/moves').set({}); getDb().ref('rooms/'+roomId+'/rematch').set(Date.now()); }catch(e){}
+    try{
+      appliedMoveIds={};
+      resetOnlineBoard();
+      getDb().ref('rooms/'+roomId).update({moves:null,state:roomStateSnapshot(),turn:'w',rematch:Date.now(),updated:Date.now()});
+    }catch(e){}
   }
   function leaveRoom(){
     var db=getDb();
@@ -1414,7 +1496,12 @@
   if(roomMatch){
     pendingRoom = roomMatch[1];
     var savedSession=getRoomSession(pendingRoom);
-    if(savedSession && savedSession.roomId===pendingRoom) resumeRoom(pendingRoom,savedSession);
+    var urlToken=urlPlayerToken();
+    if(savedSession && savedSession.roomId===pendingRoom){
+      if(urlToken && !savedSession.token) savedSession.token=urlToken;
+      resumeRoom(pendingRoom,savedSession);
+    }
+    else if(urlToken) resumeRoomByToken(pendingRoom,urlToken);
     else S.joinOpen = true;
   }
   render();
