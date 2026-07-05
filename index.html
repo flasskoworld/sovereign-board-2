@@ -166,12 +166,25 @@
   .chat-input input{flex:1; min-width:0; background:transparent; border:none; color:var(--text); -webkit-text-fill-color:var(--text); caret-color:var(--accent); font-family:'Inter',sans-serif; font-size:16px; padding:12px 13px; outline:none;}
   .chat-input button{background:transparent; border:none; border-left:1px solid var(--border); color:var(--accent); font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; padding:0 15px; cursor:pointer;}
   .actions{display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px;}
+  .actions.compact{grid-template-columns:1fr;}
   .act{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.06em; text-transform:uppercase; display:flex; flex-direction:column; align-items:center; gap:4px; padding:11px; border-radius:10px; cursor:pointer; border:1px solid var(--border); background:var(--panel); color:var(--dim);}
   .act .g{font-size:16px;}
   .act{position:relative;}
   .chat-badge{position:absolute; top:8px; right:10px; min-width:18px; height:18px; padding:0 5px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; background:var(--accent); color:#0b0e14; font-family:'Space Mono',monospace; font-size:10px; font-weight:700; line-height:1;}
   .act.primary{border-color:var(--accent); background:var(--accent-soft); color:var(--text);}
   .act.dim{opacity:.5;}
+  .mp-chat-rail{display:block;}
+  .chat-rail{
+    position:relative; width:100%; min-height:58px; border:1px solid var(--accent); border-radius:10px;
+    background:var(--accent-soft); color:var(--text); cursor:pointer; padding:12px 14px;
+    display:flex; align-items:center; gap:12px; text-align:left;
+  }
+  .chat-rail .g{font-size:20px; line-height:1;}
+  .chat-rail b{display:block; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.12em; text-transform:uppercase; color:var(--accent);}
+  .chat-rail small{display:block; margin-top:2px; font-size:12px; line-height:1.25; color:var(--dim);}
+  .chat-rail .chat-badge{position:static; margin-left:auto; flex:0 0 auto;}
+  .rail-cue{margin-left:auto; font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--dim);}
+  .chat-rail .chat-badge + .rail-cue{margin-left:0;}
   .log{border:1px solid var(--border); border-radius:10px; background:var(--panel); padding:12px 15px;}
   .log .lbl{font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); margin:0 0 8px;}
   .log .body{font-family:'Space Mono',monospace; font-size:12px; line-height:1.7; color:var(--dim); max-height:80px; overflow-y:auto; display:flex; flex-wrap:wrap; gap:4px 14px;}
@@ -1412,20 +1425,22 @@
         '<div class="chat-input"><input id="chatIn" placeholder="Message '+esc(S.friendName)+'\u2026" value="'+esc(S.chatDraft)+'"><button data-act="send">Send</button></div></div>';
     }
 
-    var primary;
+    var actions;
     if(isMp){
       var badge=S.chatUnread?'<span class="chat-badge">'+(S.chatUnread>9?'9+':S.chatUnread)+'</span>':'';
-      primary='<button class="act primary" data-act="chat"><span class="g">\uD83D\uDCAC</span>'+badge+'Chat</button>';
+      var chatCue=S.chatOpen?'Close':'Open';
+      actions='<div class="mp-chat-rail"><button class="chat-rail" data-act="chat"><span class="g">\uD83D\uDCAC</span><span><b>Chat</b><small>Message '+esc(S.friendName || 'opponent')+'</small></span>'+badge+'<span class="rail-cue">'+chatCue+'</span></button></div>';
+      if(S.over){
+        actions+='<div class="actions compact"><button class="act primary" data-act="new"><span class="g">\u21bb</span>Rematch</button></div>';
+      }
     } else {
       var hintDim=(S.turn===S.side&&!S.over)?'':' dim';
-      primary='<button class="act primary'+hintDim+'" data-act="hint"><span class="g">\uD83D\uDCA1</span>Hint</button>';
+      var primary='<button class="act primary'+hintDim+'" data-act="hint"><span class="g">\uD83D\uDCA1</span>Hint</button>';
+      var undoDim=S.history.length?'':' dim';
+      actions='<div class="actions">'+primary+
+        '<button class="act'+undoDim+'" data-act="undo"><span class="g">\u21b6</span>Undo</button>'+
+        '<button class="act" data-act="new"><span class="g">\u21bb</span>New</button></div>';
     }
-    var undoDim=S.history.length?'':' dim';
-    var rematchDim=(isMp&&!S.over)?' dim':'';
-    var rematchText=isMp?(S.over?'Rematch':'Locked'):'New';
-    var actions='<div class="actions">'+primary+
-      '<button class="act'+undoDim+'" data-act="undo"><span class="g">\u21b6</span>Undo</button>'+
-      '<button class="act'+rematchDim+'" data-act="new"><span class="g">\u21bb</span>'+rematchText+'</button></div>';
 
     var logInner = S.log.length ? S.log.map(function(m){ return '<span>'+esc(m)+'</span>'; }).join('') : '<span class="empty">No moves yet. Open the war.</span>';
     var log='<div class="log"><p class="lbl">Dispatches</p><div class="body">'+logInner+'</div></div>';
