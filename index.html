@@ -426,8 +426,24 @@
   function clockLabel(color){
     if(!S.clock) return '';
     var ms=clockMs(S.clock,color,Date.now());
-    var cls='clock-pill'+(S.clock.running&&S.clock.active===color&&!S.over?' hot':'')+(ms!==null&&ms<=10000?' low':'');
-    return '<span class="'+cls+'">'+(color==='w'?'White':'Black')+' '+clockText(ms)+'</span>';
+    return '<span class="'+clockClass(color,ms)+'" data-clock="'+color+'">'+clockCopy(color,ms)+'</span>';
+  }
+  function clockClass(color,ms){
+    return 'clock-pill'+(S.clock&&S.clock.running&&S.clock.active===color&&!S.over?' hot':'')+(ms!==null&&ms<=10000?' low':'');
+  }
+  function clockCopy(color,ms){
+    return (color==='w'?'White':'Black')+' '+clockText(ms);
+  }
+  function refreshClockPills(){
+    if(!S.clock) return;
+    var now=Date.now();
+    ['w','b'].forEach(function(color){
+      var el=document.querySelector('[data-clock="'+color+'"]');
+      if(!el) return;
+      var ms=clockMs(S.clock,color,now);
+      el.className=clockClass(color,ms);
+      el.textContent=clockCopy(color,ms);
+    });
   }
   function nextClockAfterMove(){
     if(!S.clock) return null;
@@ -447,7 +463,7 @@
       if(!(S.mode==='mp'&&S.online&&S.clock&&S.clock.running&&!S.over)) return;
       var expired=expiredClockColor();
       if(expired) flagTimeout(expired);
-      else set({clockTick:Date.now()});
+      else { S.clockTick=Date.now(); refreshClockPills(); }
     },1000);
   }
   function pieceGlyph(type){ return (GLYPH[type]||'')+'\uFE0E'; }
@@ -1543,11 +1559,27 @@
   }
 
   function render(){
+    var active=document.activeElement, keepChatFocus=active&&active.id==='chatIn';
+    var chatValue=keepChatFocus ? active.value : '';
+    var chatStart=keepChatFocus ? active.selectionStart : null;
+    var chatEnd=keepChatFocus ? active.selectionEnd : null;
     applyTheme();
     var html = S.screen==='home' ? homeHTML() : gameHTML();
     html += codexSheetHTML() + reviewSheetHTML() + challengeSheetHTML() + joinSheetHTML();
     document.getElementById('app').innerHTML = html;
-    if(S.chatOpen) setTimeout(settleChatPanel,0);
+    if(S.chatOpen) setTimeout(function(){
+      settleChatPanel();
+      if(keepChatFocus){
+        var input=document.getElementById('chatIn');
+        if(input){
+          input.value=chatValue;
+          S.chatDraft=chatValue;
+          try{ input.focus({preventScroll:true}); }catch(e){ input.focus(); }
+          try{ input.setSelectionRange(chatStart,chatEnd); }catch(e){}
+          lockChatViewport();
+        }
+      }
+    },0);
   }
 
   // ---------- events ----------
@@ -1595,7 +1627,10 @@
     if(e.target && e.target.id==='chatIn') lockChatViewport();
   });
   document.addEventListener('focusout', function(e){
-    if(e.target && e.target.id==='chatIn') setTimeout(unlockChatViewport,80);
+    if(e.target && e.target.id==='chatIn') setTimeout(function(){
+      if(document.activeElement && document.activeElement.id==='chatIn') return;
+      unlockChatViewport();
+    },120);
   });
   document.addEventListener('keydown', function(e){
     if(e.target && e.target.id==='mpName' && e.key==='Enter'){ e.preventDefault(); createLink(); }
