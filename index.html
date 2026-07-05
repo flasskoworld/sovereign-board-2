@@ -351,7 +351,7 @@
     codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
     chat:[], chatOpen:false, chatDraft:'', chatUnread:0,
-    online:false, myColor:'w', oppOnline:false, joinOpen:false,
+    online:false, myColor:'w', oppOnline:false, joinOpen:false, roomUpdated:0,
     timeControl:'casual', clock:null, clockTick:0
   };
   var projection = null, mapPaths = null;
@@ -1104,24 +1104,36 @@
   }
   function resetOnlineBoard(){
     pendingOpeningName='';
-    set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:''});
+    set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:'',roomUpdated:0});
+  }
+  function boardSig(board){
+    return (board||[]).map(function(p){ return p||''; }).join('|');
+  }
+  function sameRoomState(state){
+    return boardSig(state.board)===boardSig(S.board) &&
+      (state.turn||'w')===S.turn &&
+      !!state.over===!!S.over &&
+      !!state.check===!!S.check;
   }
   function roomStateSnapshot(){
+    var updated=Date.now();
+    S.roomUpdated=Math.max(S.roomUpdated||0,updated);
     return {
       board:S.board, turn:S.turn, castling:S.castling, ep:S.ep, captured:S.captured,
       last:S.last, log:S.log, review:S.review, over:S.over, check:S.check,
-      overTitle:S.overTitle||'', overNote:S.overNote||'', timeControl:S.timeControl, clock:S.clock, updated:Date.now()
+      overTitle:S.overTitle||'', overNote:S.overNote||'', timeControl:S.timeControl, clock:S.clock, updated:updated
     };
   }
   function restoreRoomState(state){
     if(!state||!state.board) return false;
+    var updated=state.updated||Date.now();
     set({
       board:state.board, turn:state.turn||'w', castling:state.castling||{wK:true,wQ:true,bK:true,bQ:true},
       ep:(typeof state.ep==='number'?state.ep:null), captured:state.captured||{w:[],b:[]},
       last:state.last||null, log:state.log||[], review:state.review||[], over:!!state.over,
       check:!!state.check, overTitle:state.overTitle||'', overNote:state.overNote||'',
       timeControl:state.timeControl||S.timeControl, clock:state.clock||S.clock,
-      selected:null, legal:[], hintMove:null, history:[], reviewOpen:false
+      selected:null, legal:[], hintMove:null, history:[], reviewOpen:false, roomUpdated:updated
     });
     return true;
   }
@@ -1158,7 +1170,11 @@
     var db=getDb(); if(!db) return;
     db.ref('rooms/'+roomId+'/state').on('value',function(snap){
       var state=snap.val();
-      if(state && state.over && !S.over) restoreRoomState(state);
+      if(!state||!state.board) return;
+      var incoming=state.updated||0;
+      if(incoming && incoming <= (S.roomUpdated||0)) return;
+      if(!sameRoomState(state)) restoreRoomState(state);
+      else if(incoming>S.roomUpdated) S.roomUpdated=incoming;
     });
   }
   function listenChat(){
