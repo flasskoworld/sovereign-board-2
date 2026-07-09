@@ -323,7 +323,23 @@
     {t:'Trade From Strength', b:'When ahead in material, simplify. When behind, complicate.'},
     {t:'Pawns Are Politics', b:'Every pawn is a future queen and a permanent weakness. Advance with intent.'},
     {t:'Threats Are Cheap', b:'A threat costs nothing and forces a reply. Make your rival answer your terms.'},
-    {t:'The Long Game', b:'When the smoke clears, march the king. Endgames reward patience over fury.'}
+    {t:'The Long Game', b:'When the smoke clears, march the king. Endgames reward patience over fury.'},
+    {t:'Loose Pieces Fall', b:'Before every attack, scan undefended pieces. Most tactics begin with something hanging.'},
+    {t:'Ask For Checks', b:'Checks, captures, threats: inspect forcing moves first, then choose the quiet move if it is still best.'},
+    {t:'Two Weaknesses', b:'One target can be defended. Create a second weakness and the board starts to bend.'},
+    {t:'Open Files Are Roads', b:'A rook without a file is a minister without a road. Trade pawns to open lanes for heavy pieces.'},
+    {t:'The Bishop Pair', b:'Two bishops love open diagonals. If you own them, trade pawns before trading bishops.'},
+    {t:'Outpost Law', b:'A knight protected by a pawn and immune to pawns is a fortress with teeth.'},
+    {t:'Havana Ledger', b:'Trade like Havana: count every exchange twice, then keep the piece that controls the route.', loc:['havana']},
+    {t:'Cairo Patience', b:'Ancient statecraft favors slow pressure. Build space, restrain counterplay, then enter on one clean file.', loc:['cairo']},
+    {t:'Tokyo Precision', b:'Small inaccuracies compound. Tokyo doctrine asks for one useful square, one useful threat, every move.', loc:['tokyo']},
+    {t:'Roman Roads', b:'Rome won by connection. Link rooks, centralize the queen, and make every piece reinforce the next.', loc:['rome']},
+    {t:'Lagos Tempo', b:'Momentum matters. When the opponent spends a move defending, use the free tempo to improve with force.', loc:['lagos']},
+    {t:'Kandake Rule', b:'Meroe rewards royal restraint: hold the centre, keep the king safe, and let the attack arrive fully armed.', loc:['meroe']},
+    {t:'Delhi Layers', b:'Delhi plays in layers. A pawn break is strongest when every piece behind it already has a post.', loc:['delhi']},
+    {t:'Crown Defense', b:'London doctrine is fortress first. Make the enemy prove the attack before you loosen your structure.', loc:['london']},
+    {t:'Persian Diagonals', b:'Persia stretches the board. Bishops and queens become dangerous when pawns clear the long roads.', loc:['persia']},
+    {t:'Market Pressure', b:'Wall Street chess is leverage: pin one piece, attack another, and make the opponent pay interest.', loc:['wallstreet']}
   ];
   var PLAYER_TIPS = [
     'A piece toward the centre \u2014 good. Whoever holds the middle holds the war.',
@@ -881,10 +897,28 @@
       db.ref().update(updates);
     }catch(e){}
   }
+  function codexPoolIndexes(){
+    var key=S.cityKey;
+    var out=[];
+    for(var i=0;i<GEMS.length;i++){
+      if(!GEMS[i].loc || GEMS[i].loc.indexOf(key)>=0) out.push(i);
+    }
+    return out;
+  }
+  function latestGem(){
+    if(!S.gems.length) return null;
+    return GEMS[S.gems[S.gems.length-1]] || null;
+  }
   function maybeGem(){
-    var target=Math.min(GEMS.length, Math.floor((S.playerMoveCount+1)/2) + (S.firstCapture?1:0));
+    var pool=codexPoolIndexes();
+    var target=Math.min(pool.length, Math.floor((S.playerMoveCount+1)/2) + (S.firstCapture?1:0));
     if(target>S.gems.length){
-      var gems=[]; for(var i=0;i<target;i++) gems.push(i);
+      var gems=S.gems.filter(function(idx){ return pool.indexOf(idx)>=0; });
+      while(gems.length<target){
+        var locked=pool.filter(function(idx){ return gems.indexOf(idx)<0; });
+        if(!locked.length) break;
+        gems.push(pick(locked));
+      }
       set({gems:gems});
     }
   }
@@ -1444,12 +1478,13 @@
 
     var codexInner;
     if(S.gems.length){
-      var lg=GEMS[S.gems[S.gems.length-1]];
-      codexInner='<span class="gt">'+esc(lg.t)+'</span><span class="gb">'+esc(lg.b)+'</span>';
+      var lg=latestGem();
+      codexInner=lg ? '<span class="gt">'+esc(lg.t)+'</span><span class="gb">'+esc(lg.b)+'</span>' : '<span class="empty">The Codex is recalibrating for this theatre.</span>';
     } else {
       codexInner='<span class="empty">The Codex opens after your first exchange. Play on to unseal its gems.</span>';
     }
-    var codex='<button class="codex'+(S.gems.length?' has':'')+'" data-act="openCodex"><div class="codex-head"><span class="t">The Codex</span><span class="c">'+S.gems.length+' / '+GEMS.length+'</span><span class="v">View all \u203a</span></div>'+codexInner+'</button>';
+    var codexTotal=codexPoolIndexes().length;
+    var codex='<button class="codex'+(S.gems.length?' has':'')+'" data-act="openCodex"><div class="codex-head"><span class="t">The Codex</span><span class="c">'+S.gems.length+' / '+codexTotal+'</span><span class="v">View all \u203a</span></div>'+codexInner+'</button>';
 
     var chatBlock='';
     if(isMp && S.chatOpen){
@@ -1483,12 +1518,14 @@
 
   function codexSheetHTML(){
     if(!S.codexOpen) return '';
-    var items=GEMS.map(function(g,i){
+    var pool=codexPoolIndexes();
+    var items=pool.map(function(idx){
+      var g=GEMS[idx], i=idx;
       var on=S.gems.indexOf(i)>=0;
       return '<div class="gem'+(on?' on':'')+'"><div class="gem-h"><span class="i">'+(on?'\u25c6':'\u25c7')+'</span><strong>'+(on?esc(g.t):'Sealed gem')+'</strong></div><span class="b">'+(on?esc(g.b):'Play on to unseal this doctrine.')+'</span></div>';
     }).join('');
     return '<div class="overlay" data-act="closeCodexBg"><div class="sheet" data-stop="1">'+
-      '<div class="sheet-head bd"><div><p class="sk">The Codex</p><h2>Doctrine gems</h2><p class="note">'+S.gems.length+' / '+GEMS.length+' unsealed. Win games to keep them.</p></div><button class="closex" data-act="closeCodex">\u2715</button></div>'+
+      '<div class="sheet-head bd"><div><p class="sk">The Codex</p><h2>'+esc(city().name)+' doctrine</h2><p class="note">'+S.gems.length+' / '+pool.length+' unsealed. Strategy, tactics, and local history rotate by theatre.</p></div><button class="closex" data-act="closeCodex">\u2715</button></div>'+
       '<div class="sheet-body">'+items+'</div></div></div>';
   }
 
