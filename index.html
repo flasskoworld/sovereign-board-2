@@ -1106,8 +1106,24 @@
     pendingOpeningName='';
     set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:'',roomUpdated:0});
   }
+  function normalizeBoard(board){
+    var out=new Array(64);
+    for(var i=0;i<64;i++) out[i]=null;
+    if(Array.isArray(board)){
+      for(var a=0;a<64;a++) out[a]=board[a]||null;
+    } else if(board && typeof board==='object'){
+      Object.keys(board).forEach(function(k){
+        var idx=parseInt(k,10);
+        if(idx>=0&&idx<64) out[idx]=board[k]||null;
+      });
+    }
+    return out;
+  }
+  function serialBoard(board){
+    return normalizeBoard(board).map(function(p){ return p||''; });
+  }
   function boardSig(board){
-    return (board||[]).map(function(p){ return p||''; }).join('|');
+    return serialBoard(board).join('|');
   }
   function sameRoomState(state){
     return boardSig(state.board)===boardSig(S.board) &&
@@ -1119,7 +1135,7 @@
     var updated=Date.now();
     S.roomUpdated=Math.max(S.roomUpdated||0,updated);
     return {
-      board:S.board, turn:S.turn, castling:S.castling, ep:S.ep, captured:S.captured,
+      board:serialBoard(S.board), turn:S.turn, castling:S.castling, ep:S.ep==null?'':S.ep, captured:S.captured,
       last:S.last, log:S.log, review:S.review, over:S.over, check:S.check,
       overTitle:S.overTitle||'', overNote:S.overNote||'', timeControl:S.timeControl, clock:S.clock, updated:updated
     };
@@ -1127,9 +1143,10 @@
   function restoreRoomState(state){
     if(!state||!state.board) return false;
     var updated=state.updated||Date.now();
+    var captured=state.captured||{};
     set({
-      board:state.board, turn:state.turn||'w', castling:state.castling||{wK:true,wQ:true,bK:true,bQ:true},
-      ep:(typeof state.ep==='number'?state.ep:null), captured:state.captured||{w:[],b:[]},
+      board:normalizeBoard(state.board), turn:state.turn||'w', castling:state.castling||{wK:true,wQ:true,bK:true,bQ:true},
+      ep:(typeof state.ep==='number'?state.ep:null), captured:{w:captured.w||[],b:captured.b||[]},
       last:state.last||null, log:state.log||[], review:state.review||[], over:!!state.over,
       check:!!state.check, overTitle:state.overTitle||'', overNote:state.overNote||'',
       timeControl:state.timeControl||S.timeControl, clock:state.clock||S.clock,
