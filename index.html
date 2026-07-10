@@ -58,6 +58,7 @@
   @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(.7);opacity:.5;}50%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}}
   @keyframes sheetUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
   @keyframes presence{0%,100%{opacity:.4;}50%{opacity:1;}}
+  @keyframes theatreIn{0%{opacity:0; transform:scale(1.04);}18%,78%{opacity:1; transform:scale(1);}100%{opacity:0; transform:scale(.985);}}
   ::-webkit-scrollbar{display:none;}
   .mono{font-family:'Space Mono',monospace;}
   .serif{font-family:'Playfair Display',serif;}
@@ -150,6 +151,7 @@
   .codex-head .v{margin-left:auto; font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#7d7868;}
   .codex .gt{display:block; font-family:'Playfair Display',serif; font-size:15px; color:var(--text); margin-bottom:3px;}
   .codex .gb{display:block; font-size:12.5px; line-height:1.5; color:var(--dim);}
+  .codex .mini{display:block; margin-top:8px; padding-top:8px; border-top:1px solid var(--border); font-family:'Space Mono',monospace; font-size:9px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent);}
   .codex .empty{font-size:12.5px; line-height:1.5; color:#6f6a5c; font-style:italic;}
   .chatbox{
     position:fixed; left:50%; bottom:calc(112px + env(safe-area-inset-bottom)); transform:translateX(-50%);
@@ -242,6 +244,12 @@
   .waiting .d{width:9px; height:9px; border-radius:50%; background:var(--accent); animation:presence 1.6s ease-in-out infinite; flex-shrink:0;}
   .waiting span{font-family:'Space Mono',monospace; font-size:12px; color:var(--text);}
   .fineprint{font-size:11px; color:#6f6a5c; margin:10px 0 0; text-align:center;}
+  .theatre-intro{position:absolute; inset:0; z-index:55; display:flex; align-items:center; justify-content:center; padding:24px; background:rgba(5,7,10,.88); pointer-events:none; animation:theatreIn 1.65s ease both;}
+  .theatre-card{width:min(360px,100%); border:1px solid var(--accent); border-radius:14px; background:radial-gradient(circle at 50% 0,var(--accent-soft),transparent 68%),var(--panel); padding:24px 20px; text-align:center; box-shadow:0 22px 70px rgba(0,0,0,.5);}
+  .theatre-card .sk{font-family:'Space Mono',monospace; font-size:10px; letter-spacing:.22em; text-transform:uppercase; color:var(--accent); margin:0 0 10px;}
+  .theatre-card h2{font-family:'Playfair Display',serif; font-size:36px; line-height:.95; margin:0 0 10px;}
+  .theatre-card p{margin:0; color:var(--dim); font-size:13px; line-height:1.45;}
+  .theatre-card .line{height:1px; background:linear-gradient(90deg,transparent,var(--accent),transparent); margin:17px 0;}
 </style>
 </head>
 <body>
@@ -364,7 +372,7 @@
     captured:{w:[],b:[]}, log:[], review:[], coach:'', hintMove:null, history:[],
     over:false, overTitle:'', overNote:'',
     gems:[], playerMoveCount:0, firstCapture:false,
-    codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
+    introOpen:false, codexOpen:false, reviewOpen:false, challengeOpen:false, mpStep:'create',
     mpName:'', mpLink:'', friendName:'Kemi', copyLabel:'Copy',
     chat:[], chatOpen:false, chatDraft:'', chatUnread:0,
     online:false, myColor:'w', oppOnline:false, joinOpen:false, roomUpdated:0,
@@ -502,6 +510,26 @@
   function pieceValue(type){ return ({P:1,N:3,B:3,R:5,Q:9,K:0})[type] || 0; }
   function pick(a){ return a[Math.floor(Math.random()*a.length)]; }
   function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+  function savedCodex(){
+    try{
+      var raw=JSON.parse(localStorage.getItem('sb_codex_unlocked')||'[]');
+      return Array.isArray(raw) ? raw.filter(function(n){ return typeof n==='number'; }) : [];
+    }catch(e){ return []; }
+  }
+  function saveCodex(list){
+    try{ localStorage.setItem('sb_codex_unlocked', JSON.stringify(list)); }catch(e){}
+  }
+  function unlockGem(idx){
+    var saved=savedCodex();
+    if(saved.indexOf(idx)<0){ saved.push(idx); saveCodex(saved); }
+  }
+  function codexArchiveIndexes(){
+    var pool=codexPoolIndexes();
+    var merged=S.gems.concat(savedCodex()).filter(function(idx){ return pool.indexOf(idx)>=0; });
+    var out=[];
+    merged.forEach(function(idx){ if(out.indexOf(idx)<0) out.push(idx); });
+    return out;
+  }
   function difficultyKings(diff){
     var out='';
     for(var i=1;i<=5;i++) out += '<span'+(i>diff?' class="dim"':'')+'>\u265A\uFE0E</span>';
@@ -773,15 +801,53 @@
     if(type==='P'&&(Math.floor(to/8)===0||Math.floor(to/8)===7)) m.promo=true;
     return m;
   }
+  function searchMoveScore(board,m,side,castling,ep){
+    var score=board[m.to]?SVAL[board[m.to][1]]*12:0;
+    var res=applyFull(board,m,castling,ep), opp=side==='w'?'b':'w';
+    if(inCheck(res.board,opp)) score+=260;
+    if(m.promo) score+=700;
+    return score;
+  }
+  function legalNegamax(board,side,depth,castling,ep,alpha,beta,ply){
+    var moves=legalAll(board,side,castling,ep);
+    if(!moves.length) return inCheck(board,side) ? -100000+ply : 0;
+    if(depth<=0) return evalBoard(board,side);
+    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep)-searchMoveScore(board,a,side,castling,ep); });
+    var best=-Infinity, opp=side==='w'?'b':'w';
+    for(var k=0;k<moves.length;k++){
+      var res=applyFull(board,moves[k],castling,ep);
+      var score=-legalNegamax(res.board,opp,depth-1,res.castling,res.ep,-beta,-alpha,ply+1);
+      if(score>best) best=score;
+      if(best>alpha) alpha=best;
+      if(alpha>=beta) break;
+    }
+    return best;
+  }
+  function mateInOne(board,side,castling,ep){
+    var moves=legalAll(board,side,castling,ep), opp=side==='w'?'b':'w';
+    for(var k=0;k<moves.length;k++){
+      var res=applyFull(board,moves[k],castling,ep);
+      if(!legalAll(res.board,opp,res.castling,res.ep).length && inCheck(res.board,opp)) return moves[k];
+    }
+    return null;
+  }
   function aiPick(board,side,depth,castling,ep){
     var moves=legalAll(board,side,castling,ep);
     if(!moves.length) return null;
-    moves.sort(function(a,b){ var ca=board[a.to]?SVAL[board[a.to][1]]:0, cb=board[b.to]?SVAL[board[b.to][1]]:0; return cb-ca; });
+    var winning=materialBalance(board,side)>=350 || isFinishingEndgame(board,side);
+    var searchDepth=winning ? Math.max(depth,3) : Math.max(depth,2);
+    if(winning && depth>=3) searchDepth=Math.max(searchDepth,4);
+    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep)-searchMoveScore(board,a,side,castling,ep); });
     var best=null,bestScore=-Infinity;
     for(var k=0;k<moves.length;k++){
       var res=applyFull(board,moves[k],castling,ep);
-      var sc=-negamax(res.board,depth-1,side==='w'?'b':'w',-Infinity,Infinity);
-      sc+=Math.random()*6;
+      var sc=-legalNegamax(res.board,side==='w'?'b':'w',searchDepth-1,res.castling,res.ep,-Infinity,Infinity,1);
+      if(winning){
+        if(inCheck(res.board,side==='w'?'b':'w')) sc+=45;
+        if(res.captured) sc+=SVAL[res.captured[1]]*0.08;
+      } else {
+        sc+=Math.random()*2;
+      }
       if(sc>bestScore){ bestScore=sc; best=moves[k]; }
     }
     return best;
@@ -869,7 +935,8 @@
       : (S.turn===S.side ? 'You' : city().opp);
     var openingName=pendingOpeningName;
     pendingOpeningName='';
-    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn, opening:openingName, piece:movingPiece[1], captured:taken?taken[1]:'', from:from, to:to}]);
+    var givesCheck=inCheck(board,S.turn==='w'?'b':'w');
+    var review=S.review.concat([{actor:actor, notation:note, capture:!!taken, side:S.turn, opening:openingName, piece:movingPiece[1], captured:taken?taken[1]:'', from:from, to:to, check:givesCheck, material:materialBalance(board,S.side)}]);
     var coach=S.coach;
     if(byHuman && S.mode==='cpu') coach = taken ? pick(CAPTURE_TIPS) : pick(PLAYER_TIPS);
     var pmc = byHuman ? S.playerMoveCount+1 : S.playerMoveCount;
@@ -917,10 +984,38 @@
       while(gems.length<target){
         var locked=pool.filter(function(idx){ return gems.indexOf(idx)<0; });
         if(!locked.length) break;
-        gems.push(pick(locked));
+        var next=pick(locked);
+        gems.push(next);
+        unlockGem(next);
       }
       set({gems:gems});
     }
+  }
+  function materialBalance(board,color){
+    var mine=0, theirs=0;
+    board.forEach(function(p){
+      if(!p) return;
+      if(p[0]===color) mine+=pieceValue(p[1]);
+      else theirs+=pieceValue(p[1]);
+    });
+    return mine-theirs;
+  }
+  function immediateCaptures(board,color,castling,ep){
+    return legalAll(board,color,castling,ep).filter(function(m){ return !!board[m.to]; });
+  }
+  function codexSnapshot(){
+    var c=city(), me=S.mode==='cpu'?S.side:(S.myColor||S.turn), bal=materialBalance(S.board,me), myTurn=S.turn===me;
+    var captures=immediateCaptures(S.board,S.turn,S.castling,S.ep);
+    if(S.over) return 'The game is settled. Open Review Game for the turning point, biggest swing, and lesson.';
+    if(S.check) return (myTurn?'Your king is under fire.':'The enemy king is checked.')+' Solve checks first, then think about material.';
+    if(captures.length){
+      var best=captures.slice().sort(function(a,b){ return pieceValue(S.board[b.to][1])-pieceValue(S.board[a.to][1]); })[0];
+      return (myTurn?'There is':'The side to move has')+' a capture on '+squareName(best.to)+'. Count the recapture before taking.';
+    }
+    if(bal>=500) return 'You are ahead in force. '+c.name+' doctrine says simplify only when the trade removes counterplay.';
+    if(bal<=-500) return 'You are behind material. Look for checks, pins, passed pawns, or a second weakness instead of quiet trades.';
+    if(S.review.length<8) return c.opp+' is still in the opening phase. Develop, claim the centre, and keep the king sheltered.';
+    return 'The position is balanced. Improve your least active piece and ask what your opponent threatens next.';
   }
   function checkEnd(){
     var side=S.turn, opp=side==='w'?'b':'w';
@@ -956,9 +1051,10 @@
     var diff=city().diff;
     var depthMap={1:1,2:1,3:2,4:2,5:3};
     var blunder={1:0.5,2:0.28,3:0.1,4:0.03,5:0};
-    var best=bookMove(opp);
     var legal=legalAll(S.board,opp,S.castling,S.ep);
     if(!legal.length) return;
+    // A forced finish always outranks an opening line or a difficulty blunder.
+    var best=mateInOne(S.board,opp,S.castling,S.ep)||bookMove(opp);
     if(!best){
       if(isFinishingEndgame(S.board,opp)) best=endgameMatePick(S.board,opp,S.castling,S.ep)||legal[0];
       else if(Math.random()<(blunder[diff]||0)) best=legal[Math.floor(Math.random()*legal.length)];
@@ -996,7 +1092,11 @@
     set({board:startBoard(),turn:'w',selected:null,legal:[],last:null,captured:{w:[],b:[]},log:[],review:[],over:false,check:false,reviewOpen:false,castling:{wK:true,wQ:true,bK:true,bQ:true},ep:null,hintMove:null,history:[],gems:[],playerMoveCount:0,firstCapture:false,coach:intro});
     if(S.mode==='cpu'&&S.side==='b') setTimeout(opponentMove,700);
   }
-  function startGame(){ set({screen:'game',mode:'cpu'}); resetGame(); }
+  function startGame(){
+    resetGame();
+    set({screen:'game',mode:'cpu',introOpen:true});
+    setTimeout(function(){ if(S.introOpen) set({introOpen:false}); },1650);
+  }
   function newGame(){
     if(S.online){
       if(!S.over){ set({coach:'Finish the current duel before starting a rematch.'}); return; }
@@ -1477,14 +1577,17 @@
     }
 
     var codexInner;
-    if(S.gems.length){
-      var lg=latestGem();
-      codexInner=lg ? '<span class="gt">'+esc(lg.t)+'</span><span class="gb">'+esc(lg.b)+'</span>' : '<span class="empty">The Codex is recalibrating for this theatre.</span>';
+    var archive=codexArchiveIndexes();
+    if(S.review.length || S.gems.length || archive.length){
+      var lg=latestGem() || (archive.length ? GEMS[archive[archive.length-1]] : null);
+      codexInner='<span class="gt">Field Note</span><span class="gb">'+esc(codexSnapshot())+'</span>';
+      if(lg) codexInner+='<span class="mini">Unlocked: '+esc(lg.t)+'</span>';
     } else {
       codexInner='<span class="empty">The Codex opens after your first exchange. Play on to unseal its gems.</span>';
     }
     var codexTotal=codexPoolIndexes().length;
-    var codex='<button class="codex'+(S.gems.length?' has':'')+'" data-act="openCodex"><div class="codex-head"><span class="t">The Codex</span><span class="c">'+S.gems.length+' / '+codexTotal+'</span><span class="v">View all \u203a</span></div>'+codexInner+'</button>';
+    var codexCount=archive.length;
+    var codex='<button class="codex'+(codexCount?' has':'')+'" data-act="openCodex"><div class="codex-head"><span class="t">The Codex</span><span class="c">'+codexCount+' / '+codexTotal+'</span><span class="v">View all \u203a</span></div>'+codexInner+'</button>';
 
     var chatBlock='';
     if(isMp && S.chatOpen){
@@ -1519,17 +1622,19 @@
   function codexSheetHTML(){
     if(!S.codexOpen) return '';
     var pool=codexPoolIndexes();
+    var archive=codexArchiveIndexes();
     var items=pool.map(function(idx){
       var g=GEMS[idx], i=idx;
-      var on=S.gems.indexOf(i)>=0;
+      var on=archive.indexOf(i)>=0;
       return '<div class="gem'+(on?' on':'')+'"><div class="gem-h"><span class="i">'+(on?'\u25c6':'\u25c7')+'</span><strong>'+(on?esc(g.t):'Sealed gem')+'</strong></div><span class="b">'+(on?esc(g.b):'Play on to unseal this doctrine.')+'</span></div>';
     }).join('');
     return '<div class="overlay" data-act="closeCodexBg"><div class="sheet" data-stop="1">'+
-      '<div class="sheet-head bd"><div><p class="sk">The Codex</p><h2>'+esc(city().name)+' doctrine</h2><p class="note">'+S.gems.length+' / '+pool.length+' unsealed. Strategy, tactics, and local history rotate by theatre.</p></div><button class="closex" data-act="closeCodex">\u2715</button></div>'+
+      '<div class="sheet-head bd"><div><p class="sk">The Codex</p><h2>'+esc(city().name)+' doctrine</h2><p class="note">'+archive.length+' / '+pool.length+' unsealed. Strategy, tactics, and local history rotate by theatre.</p></div><button class="closex" data-act="closeCodex">\u2715</button></div>'+
       '<div class="sheet-body">'+items+'</div></div></div>';
   }
 
   function reviewTag(m){
+    if(m.check) return 'Check';
     if(m.opening) return 'Book';
     if(m.capture) return 'Tactic';
     if(m.piece==='K') return 'King';
@@ -1538,6 +1643,7 @@
     return 'Plan';
   }
   function reviewLine(m){
+    if(m.check) return 'Forcing move: a check limits replies. After a check, ask whether the attack continues or the piece retreats safely.';
     if(m.opening) return 'Known opening idea: develop with a plan before chasing quick material.';
     if(m.capture){
       var cap=pieceName(m.captured), val=pieceValue(m.captured);
@@ -1554,9 +1660,15 @@
   }
   function reviewInsights(){
     if(!S.review.length) return '<div class="review-note"><b>No Record</b><span>No moves were recorded for this game.</span></div>';
-    var book=null, firstCapture=null, biggest=null, youWin=null, opponentWin=null;
+    var book=null, firstCapture=null, biggest=null, youWin=null, opponentWin=null, firstCheck=null, swing=null, prev=0;
     S.review.forEach(function(m,i){
       if(!book && m.opening) book={m:m,i:i};
+      if(!firstCheck && m.check) firstCheck={m:m,i:i};
+      if(typeof m.material==='number'){
+        var delta=Math.abs(m.material-prev);
+        if(!swing || delta>swing.delta) swing={m:m,i:i,delta:delta};
+        prev=m.material;
+      }
       if(m.capture){
         var entry={m:m,i:i,val:pieceValue(m.captured)};
         if(!firstCapture) firstCapture=entry;
@@ -1573,6 +1685,8 @@
     }
     if(biggest){
       notes.push({t:'Turning Point',b:'Move '+(biggest.i+1)+' was the biggest material swing: '+biggest.m.actor+' took a '+pieceName(biggest.m.captured)+'. After moments like this, trade when ahead and complicate when behind.'});
+    } else if(swing && swing.delta>=250){
+      notes.push({t:'Turning Point',b:'Move '+(swing.i+1)+' changed the balance even without a huge capture. Position can swing through activity, threats, and king safety.'});
     } else {
       notes.push({t:'Turning Point',b:'There was no major capture swing. The game was decided more by position: space, activity, and king safety.'});
     }
@@ -1583,6 +1697,14 @@
     } else {
       notes.push({t:'Practice Focus',b:'Next game, try creating one clear target: an undefended piece, a weak pawn, or pressure near the king.'});
     }
+    if(firstCheck){
+      notes.push({t:'Forcing Moment',b:'The first check came on move '+(firstCheck.i+1)+'. Checks are useful because they narrow the board, but only keep pressing if the next move improves your position.'});
+    }
+    if(S.gems.length){
+      var g=GEMS[S.gems[S.gems.length-1]];
+      if(g) notes.push({t:'Codex Earned',b:'You unlocked "'+g.t+'". Carry that lesson into the next theatre.'});
+    }
+    notes.push({t:'Final Lesson',b:city().line+' Next run, choose one theme before move one: centre, king safety, open files, or passed pawns.'});
     return notes.map(function(n){ return '<div class="review-note"><b>'+esc(n.t)+'</b><span>'+esc(n.b)+'</span></div>'; }).join('');
   }
   function reviewSheetHTML(){
@@ -1643,6 +1765,18 @@
       '<button class="btn-primary" data-act="submitJoin" type="button">Join the board</button></div></div></div>';
   }
 
+  function theatreIntroHTML(){
+    if(!S.introOpen || S.screen!=='game' || S.mode!=='cpu') return '';
+    var c=city();
+    return '<div class="theatre-intro"><div class="theatre-card">'+
+      '<p class="sk">Entering theatre</p>'+
+      '<h2>'+esc(c.name)+'</h2>'+
+      '<p>'+esc(c.doctrine)+' · '+esc(c.opp)+'</p>'+
+      '<div class="line"></div>'+
+      '<p>'+difficultyKingsText(c.diff)+' · '+esc(c.line)+'</p>'+
+    '</div></div>';
+  }
+
   function render(){
     var active=document.activeElement, keepChatFocus=active&&active.id==='chatIn';
     var chatValue=keepChatFocus ? active.value : '';
@@ -1650,7 +1784,7 @@
     var chatEnd=keepChatFocus ? active.selectionEnd : null;
     applyTheme();
     var html = S.screen==='home' ? homeHTML() : gameHTML();
-    html += codexSheetHTML() + reviewSheetHTML() + challengeSheetHTML() + joinSheetHTML();
+    html += codexSheetHTML() + reviewSheetHTML() + challengeSheetHTML() + joinSheetHTML() + theatreIntroHTML();
     document.getElementById('app').innerHTML = html;
     if(S.chatOpen) setTimeout(function(){
       settleChatPanel();
