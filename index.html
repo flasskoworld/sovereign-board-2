@@ -275,6 +275,19 @@
     {key:'persia', name:'Persia', doctrine:'Silk Road Stratagem', opp:'The Shah', style:'Diagonal', diff:4, lon:51.3890, lat:35.6892, accent:'#2fb7c7', light:'#8ed6cf', dark:'#183d4c', line:'Elegant and tactical. Persia stretches the board with diagonals, passed pawns, and long-range threats.'},
     {key:'wallstreet', name:'Wall St', doctrine:'Capital Warfare', opp:'The Broker', style:'Ruthless', diff:5, lon:-74.006, lat:40.7128, accent:'#2fae76', light:'#c9d2d6', dark:'#17312a', line:'Disciplined and unforgiving. The real exam \u2014 save this seat for when you\u2019re ready.'}
   ];
+  var DOCTRINE_PROFILES = {
+    balanced:{material:1,center:1.5,development:2,space:1,kingSafety:2,pawnStructure:1.5,passed:1.2,bishopPair:4,diagonal:0.5,rookFiles:1,coordination:1.5,mobility:0.7,kingPressure:1.2,hanging:2,simplify:0,capture:0,check:0,trade:0},
+    havana:{material:.98,center:1.4,development:1.5,space:1.2,kingSafety:1.5,pawnStructure:1.2,passed:1.6,bishopPair:3,diagonal:.5,rookFiles:1.4,coordination:1,mobility:1.2,kingPressure:1.4,hanging:2.2,simplify:.8,capture:22,check:10,trade:18},
+    cairo:{material:1.02,center:3.2,development:2.2,space:2.8,kingSafety:3,pawnStructure:3.5,passed:1.6,bishopPair:4,diagonal:1,rookFiles:1,coordination:2.2,mobility:.7,kingPressure:1.2,hanging:2.5,simplify:.8,capture:6,check:5,trade:5},
+    tokyo:{material:1.04,center:2.4,development:3.5,space:1.5,kingSafety:4.5,pawnStructure:3,passed:1.5,bishopPair:5,diagonal:1.2,rookFiles:1.5,coordination:4,mobility:1.2,kingPressure:1.5,hanging:5,simplify:1,capture:5,check:6,trade:5},
+    rome:{material:1.03,center:2.8,development:5,space:1.6,kingSafety:5,pawnStructure:2.5,passed:1.4,bishopPair:6,diagonal:1,rookFiles:3,coordination:3.5,mobility:1,kingPressure:1.5,hanging:3,simplify:1.2,capture:5,check:5,trade:6},
+    lagos:{material:.94,center:2.2,development:3,space:2.2,kingSafety:1.8,pawnStructure:1,passed:1.5,bishopPair:3,diagonal:1.2,rookFiles:1.5,coordination:1.5,mobility:2.6,kingPressure:7,hanging:1.8,simplify:-.8,capture:16,check:48,trade:2},
+    meroe:{material:1.06,center:3.5,development:2.5,space:3.8,kingSafety:4.5,pawnStructure:3,passed:2.4,bishopPair:5,diagonal:1.2,rookFiles:1.8,coordination:3.2,mobility:1.8,kingPressure:2.3,hanging:3.5,simplify:2,capture:8,check:10,trade:12},
+    delhi:{material:1.03,center:2.5,development:3,space:3.2,kingSafety:3,pawnStructure:4.5,passed:3,bishopPair:5,diagonal:1.5,rookFiles:1.8,coordination:4.5,mobility:1.4,kingPressure:2,hanging:3,simplify:.6,capture:7,check:8,trade:5},
+    london:{material:1.09,center:1.8,development:2.5,space:.8,kingSafety:6.5,pawnStructure:5.5,passed:1.8,bishopPair:4,diagonal:.7,rookFiles:2.2,coordination:3.2,mobility:.5,kingPressure:.8,hanging:4,simplify:4,capture:8,check:3,trade:24},
+    persia:{material:1.01,center:2,development:2.5,space:2.2,kingSafety:2.5,pawnStructure:2.4,passed:3.5,bishopPair:12,diagonal:4.2,rookFiles:1,coordination:2.5,mobility:1.8,kingPressure:2.8,hanging:2.8,simplify:.3,capture:8,check:14,trade:4},
+    wallstreet:{material:1.2,center:1.6,development:2,space:1.2,kingSafety:3,pawnStructure:2.5,passed:2.8,bishopPair:4,diagonal:.7,rookFiles:2,coordination:2.5,mobility:1,kingPressure:2.5,hanging:8,simplify:5,capture:32,check:18,trade:30}
+  };
   var DIFF_LABELS = {1:'Just learning',2:'Gentle',3:'Even',4:'Sharp',5:'Tough'};
   var GLYPH = {K:'\u265A',Q:'\u265B',R:'\u265C',B:'\u265D',N:'\u265E',P:'\u265F'};
   var SVAL = {P:100,N:320,B:330,R:500,Q:900,K:20000};
@@ -628,6 +641,96 @@
     }
     return sc;
   }
+  function doctrineProfile(key){ return DOCTRINE_PROFILES[key]||DOCTRINE_PROFILES.balanced; }
+  function rayReach(board,i,dirs){
+    var r=Math.floor(i/8),c=i%8,total=0;
+    dirs.forEach(function(d){
+      var rr=r+d[0],cc=c+d[1];
+      while(rr>=0&&rr<8&&cc>=0&&cc<8){
+        total++;
+        if(board[rr*8+cc]) break;
+        rr+=d[0]; cc+=d[1];
+      }
+    });
+    return total;
+  }
+  function doctrineFeatures(board,color){
+    var opp=color==='w'?'b':'w';
+    var f={center:0,development:0,space:0,kingSafety:0,pawnStructure:0,passed:0,bishopPair:0,diagonal:0,rookFiles:0,coordination:0,mobility:0,kingPressure:0,hanging:0};
+    var pawnsByFile=[0,0,0,0,0,0,0,0], bishops=0;
+    var minorStarts=color==='w'?[57,58,61,62]:[1,2,5,6];
+    for(var i=0;i<64;i++){
+      var p=board[i]; if(!p||p[0]!==color) continue;
+      var type=p[1],r=Math.floor(i/8),c=i%8;
+      var central=(3.5-Math.abs(3.5-c))+(3.5-Math.abs(3.5-r));
+      f.center+=central*(type==='P'?1.2:(type==='N'||type==='B'?1.5:.5));
+      if(type==='P'){
+        pawnsByFile[c]++;
+        var advance=color==='w'?6-r:r-1;
+        f.space+=Math.max(0,advance)*1.2;
+        if(attacked(board,i,color)) f.pawnStructure+=1.5;
+      } else {
+        if((type==='N'||type==='B')&&minorStarts.indexOf(i)<0) f.development+=2;
+        if(type!=='K'&&((color==='w'&&r<=3)||(color==='b'&&r>=4))) f.space+=1;
+        if(attacked(board,i,color)) f.coordination+=1;
+      }
+      if(type==='B'){
+        bishops++;
+        f.diagonal+=rayReach(board,i,[[-1,-1],[-1,1],[1,-1],[1,1]]);
+      }
+      if(type==='Q') f.diagonal+=rayReach(board,i,[[-1,-1],[-1,1],[1,-1],[1,1]])*.35;
+      if(type==='R'){
+        var ownPawn=false,anyPawn=false;
+        for(var rr=0;rr<8;rr++){
+          var fp=board[rr*8+c];
+          if(fp&&fp[1]==='P'){ anyPawn=true; if(fp[0]===color) ownPawn=true; }
+        }
+        if(!ownPawn) f.rookFiles+=anyPawn?2:4;
+      }
+      if(type!=='K'&&attacked(board,i,opp)&&!attacked(board,i,color)) f.hanging+=SVAL[type]/100;
+      f.mobility+=pseudoFull(board,i,{wK:false,wQ:false,bK:false,bQ:false},null).length;
+    }
+    if(bishops>=2) f.bishopPair=1;
+    for(var file=0;file<8;file++){
+      if(pawnsByFile[file]>1) f.pawnStructure-=(pawnsByFile[file]-1)*2.5;
+      if(pawnsByFile[file]&&!pawnsByFile[file-1]&&!pawnsByFile[file+1]) f.pawnStructure-=1.5;
+    }
+    f.passed=passedPawnPressure(board,color)/25;
+    var ks=kingSq(board,color);
+    if(ks>=0){
+      var kr=Math.floor(ks/8),kc=ks%8,home=color==='w'?7:0,dir=color==='w'?-1:1;
+      if(kr===home&&(kc===6||kc===2)) f.kingSafety+=8;
+      if(kr===home&&(kc===3||kc===4)) f.kingSafety-=2;
+      for(var dc=-1;dc<=1;dc++){
+        var sr=kr+dir,sc=kc+dc;
+        if(sr>=0&&sr<8&&sc>=0&&sc<8&&board[sr*8+sc]===color+'P') f.kingSafety+=2;
+      }
+    }
+    var enemyKing=kingSq(board,opp);
+    if(enemyKing>=0){
+      var er=Math.floor(enemyKing/8),ec=enemyKing%8;
+      for(var dr=-1;dr<=1;dr++) for(var dc2=-1;dc2<=1;dc2++){
+        if(!dr&&!dc2) continue;
+        var tr=er+dr,tc=ec+dc2;
+        if(tr>=0&&tr<8&&tc>=0&&tc<8&&attacked(board,tr*8+tc,color)) f.kingPressure+=1;
+      }
+      if(inCheck(board,opp)) f.kingPressure+=4;
+    }
+    return f;
+  }
+  function doctrineEval(board,side,profileKey){
+    var profile=doctrineProfile(profileKey), opp=side==='w'?'b':'w';
+    var own=doctrineFeatures(board,side), enemy=doctrineFeatures(board,opp);
+    var score=evalBoard(board,side)*profile.material;
+    ['center','development','space','kingSafety','pawnStructure','passed','bishopPair','diagonal','rookFiles','coordination','mobility','kingPressure'].forEach(function(key){
+      score+=(own[key]-enemy[key])*(profile[key]||0);
+    });
+    score+=(enemy.hanging-own.hanging)*(profile.hanging||0);
+    var advantage=materialBalance(board,side), remaining=0;
+    for(var i=0;i<64;i++) if(board[i]&&board[i][1]!=='K') remaining+=SVAL[board[i][1]];
+    if(Math.abs(advantage)>=100) score+=(advantage>0?1:-1)*((8000-remaining)/100)*(profile.simplify||0);
+    return score;
+  }
   function orderedMoves(board,side){
     var m=allMoves(board,side);
     m.sort(function(a,b){ var ca=board[a[1]]?SVAL[board[a[1]][1]]:0, cb=board[b[1]]?SVAL[board[b[1]][1]]:0; return cb-ca; });
@@ -801,22 +904,34 @@
     if(type==='P'&&(Math.floor(to/8)===0||Math.floor(to/8)===7)) m.promo=true;
     return m;
   }
-  function searchMoveScore(board,m,side,castling,ep){
+  function doctrineMoveBonus(board,m,side,castling,ep,profileKey){
+    var profile=doctrineProfile(profileKey), captured=board[m.to], bonus=0;
+    var res=applyFull(board,m,castling,ep), opp=side==='w'?'b':'w';
+    if(captured){
+      var capturedUnits=SVAL[captured[1]]/100;
+      bonus+=capturedUnits*(profile.capture||0);
+      if(materialBalance(board,side)>=100) bonus+=capturedUnits*(profile.trade||0);
+    }
+    if(inCheck(res.board,opp)) bonus+=profile.check||0;
+    if(m.promo) bonus+=(profile.passed||0)*12;
+    return bonus;
+  }
+  function searchMoveScore(board,m,side,castling,ep,profileKey){
     var score=board[m.to]?SVAL[board[m.to][1]]*12:0;
     var res=applyFull(board,m,castling,ep), opp=side==='w'?'b':'w';
     if(inCheck(res.board,opp)) score+=260;
     if(m.promo) score+=700;
-    return score;
+    return score+doctrineMoveBonus(board,m,side,castling,ep,profileKey);
   }
-  function legalNegamax(board,side,depth,castling,ep,alpha,beta,ply){
+  function legalNegamax(board,side,depth,castling,ep,alpha,beta,ply,profileKey){
     var moves=legalAll(board,side,castling,ep);
     if(!moves.length) return inCheck(board,side) ? -100000+ply : 0;
-    if(depth<=0) return evalBoard(board,side);
-    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep)-searchMoveScore(board,a,side,castling,ep); });
+    if(depth<=0) return doctrineEval(board,side,profileKey);
+    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep,profileKey)-searchMoveScore(board,a,side,castling,ep,profileKey); });
     var best=-Infinity, opp=side==='w'?'b':'w';
     for(var k=0;k<moves.length;k++){
       var res=applyFull(board,moves[k],castling,ep);
-      var score=-legalNegamax(res.board,opp,depth-1,res.castling,res.ep,-beta,-alpha,ply+1);
+      var score=-legalNegamax(res.board,opp,depth-1,res.castling,res.ep,-beta,-alpha,ply+1,profileKey);
       if(score>best) best=score;
       if(best>alpha) alpha=best;
       if(alpha>=beta) break;
@@ -831,17 +946,19 @@
     }
     return null;
   }
-  function aiPick(board,side,depth,castling,ep){
+  function aiPick(board,side,depth,castling,ep,profileKey){
+    profileKey=profileKey||'balanced';
     var moves=legalAll(board,side,castling,ep);
     if(!moves.length) return null;
     var winning=materialBalance(board,side)>=350 || isFinishingEndgame(board,side);
     var searchDepth=winning ? Math.max(depth,3) : Math.max(depth,2);
     if(winning && depth>=3) searchDepth=Math.max(searchDepth,4);
-    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep)-searchMoveScore(board,a,side,castling,ep); });
+    moves.sort(function(a,b){ return searchMoveScore(board,b,side,castling,ep,profileKey)-searchMoveScore(board,a,side,castling,ep,profileKey); });
     var best=null,bestScore=-Infinity;
     for(var k=0;k<moves.length;k++){
       var res=applyFull(board,moves[k],castling,ep);
-      var sc=-legalNegamax(res.board,side==='w'?'b':'w',searchDepth-1,res.castling,res.ep,-Infinity,Infinity,1);
+      var sc=-legalNegamax(res.board,side==='w'?'b':'w',searchDepth-1,res.castling,res.ep,-Infinity,Infinity,1,profileKey);
+      sc+=doctrineMoveBonus(board,moves[k],side,castling,ep,profileKey);
       if(winning){
         if(inCheck(res.board,side==='w'?'b':'w')) sc+=45;
         if(res.captured) sc+=SVAL[res.captured[1]]*0.08;
@@ -1058,7 +1175,7 @@
     if(!best){
       if(isFinishingEndgame(S.board,opp)) best=endgameMatePick(S.board,opp,S.castling,S.ep)||legal[0];
       else if(Math.random()<(blunder[diff]||0)) best=legal[Math.floor(Math.random()*legal.length)];
-      else best=aiPick(S.board,opp,depthMap[diff]||2,S.castling,S.ep)||legal[0];
+      else best=aiPick(S.board,opp,depthMap[diff]||2,S.castling,S.ep,city().key)||legal[0];
     }
     var took=!!S.board[best.to];
     pendingOpeningName=best.openingName||'';
@@ -1070,7 +1187,7 @@
   }
   function hint(){
     if(S.over||S.turn!==S.side||S.mode!=='cpu') return;
-    var best=aiPick(S.board,S.side,2,S.castling,S.ep);
+    var best=aiPick(S.board,S.side,2,S.castling,S.ep,'balanced');
     if(!best) return;
     var msg=S.board[best.to]
       ? 'The glowing piece wins material. Tap it, then the marked square.'
