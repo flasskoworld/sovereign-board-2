@@ -64,6 +64,17 @@
     background-blend-mode:multiply;
     filter:hue-rotate(25deg) saturate(.72) brightness(.74) contrast(1.12);
   }
+  body[data-theatre="tokyo"] .ambient{
+    inset:0;
+    opacity:.36;
+    animation:none;
+    background-image:linear-gradient(rgba(5,16,28,.68),rgba(5,16,28,.68)),url('./assets/tokyo-pattern.jpg');
+    background-size:cover;
+    background-position:center top;
+    background-repeat:no-repeat;
+    background-blend-mode:multiply;
+    filter:hue-rotate(-18deg) saturate(1.15) brightness(.72) contrast(1.08);
+  }
   .screen{position:relative; z-index:2;}
   @keyframes drift{0%{background-position:0 0;}100%{background-position:340px 340px;}}
   @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(.7);opacity:.5;}50%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}}
