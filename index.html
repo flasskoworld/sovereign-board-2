@@ -53,6 +53,17 @@
   .ambient{position:absolute; inset:-20%; z-index:0; opacity:.10; pointer-events:none;
     background:repeating-linear-gradient(125deg,var(--accent) 0 1px,transparent 1px 92px);
     animation:drift 40s linear infinite;}
+  body[data-theatre="persia"] .ambient{
+    inset:0;
+    opacity:.42;
+    animation:none;
+    background-image:linear-gradient(rgba(7,17,22,.72),rgba(7,17,22,.72)),url('./assets/persia-pattern.jpg');
+    background-size:cover;
+    background-position:center top;
+    background-repeat:no-repeat;
+    background-blend-mode:multiply;
+    filter:hue-rotate(25deg) saturate(.72) brightness(.74) contrast(1.12);
+  }
   .screen{position:relative; z-index:2;}
   @keyframes drift{0%{background-position:0 0;}100%{background-position:340px 340px;}}
   @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(.7);opacity:.5;}50%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}}
@@ -1566,6 +1577,8 @@
   // ---------- theme ----------
   function applyTheme(){
     var c=city(), r=document.documentElement.style;
+    if(S.screen==='game') document.body.setAttribute('data-theatre',c.key);
+    else document.body.removeAttribute('data-theatre');
     r.setProperty('--accent', c.accent);
     r.setProperty('--accent-soft', hexA(c.accent,0.2));
     r.setProperty('--accent-line', hexA(c.accent,0.13));
