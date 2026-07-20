@@ -119,6 +119,17 @@
     background-blend-mode:multiply;
     filter:saturate(.78) brightness(.58) contrast(1.08);
   }
+  body[data-theatre="delhi"] .ambient{
+    inset:0;
+    opacity:.34;
+    animation:none;
+    background-image:linear-gradient(rgba(22,12,4,.72),rgba(22,12,4,.72)),url('./assets/delhi-pattern.jpg');
+    background-size:cover;
+    background-position:center top;
+    background-repeat:no-repeat;
+    background-blend-mode:multiply;
+    filter:saturate(.72) brightness(.55) contrast(1.08);
+  }
   .screen{position:relative; z-index:2;}
   @keyframes drift{0%{background-position:0 0;}100%{background-position:340px 340px;}}
   @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(.7);opacity:.5;}50%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}}
