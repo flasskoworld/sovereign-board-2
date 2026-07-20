@@ -75,6 +75,17 @@
     background-blend-mode:multiply;
     filter:hue-rotate(-18deg) saturate(1.15) brightness(.72) contrast(1.08);
   }
+  body[data-theatre="rome"] .ambient{
+    inset:0;
+    opacity:.34;
+    animation:none;
+    background-image:linear-gradient(rgba(24,8,8,.68),rgba(24,8,8,.68)),url('./assets/rome-pattern.jpg');
+    background-size:cover;
+    background-position:center top;
+    background-repeat:no-repeat;
+    background-blend-mode:multiply;
+    filter:saturate(.82) brightness(.66) contrast(1.08);
+  }
   .screen{position:relative; z-index:2;}
   @keyframes drift{0%{background-position:0 0;}100%{background-position:340px 340px;}}
   @keyframes pinPulse{0%,100%{transform:translate(-50%,-50%) scale(.7);opacity:.5;}50%{transform:translate(-50%,-50%) scale(1.5);opacity:0;}}
